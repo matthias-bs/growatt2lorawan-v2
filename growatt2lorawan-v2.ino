@@ -1,31 +1,263 @@
-/*
-  RadioLib LoRaWAN End Device Reference Example
-
-  This example joins a LoRaWAN network and will send
-  uplink packets. Before you start, you will have to
-  register your device at https://www.thethingsnetwork.org/
-  After your device is registered, you can run this example.
-  The device will join the network and start uploading data.
-
-  Also, most of the possible and available functions are
-  shown here for reference.
-
-  LoRaWAN v1.1 requires the use of EEPROM (persistent storage).
-  Please refer to the 'persistent' example once you are familiar
-  with LoRaWAN.
-  Running this examples REQUIRES you to check "Resets DevNonces"
-  on your LoRaWAN dashboard. Refer to the network's 
-  documentation on how to do this.
-
-  For default module settings, see the wiki page
-  https://github.com/jgromes/RadioLib/wiki/Default-configuration
-
-  For full API reference, see the GitHub Pages
-  https://jgromes.github.io/RadioLib/
-*/
+///////////////////////////////////////////////////////////////////////////////
+// growatt2lorawan-v2.ino
+// 
+// LoRaWAN Node for Growatt PV-Inverter Data Interface
+//
+// - implements power saving by using the ESP32 deep sleep mode
+// - implements fast re-joining after sleep by storing network session data
+// - LoRa_Serialization is used for encoding various data types into bytes
+// - internal Real-Time Clock (RTC) set from LoRaWAN network time (optional)
+//
+//
+// Based on:
+// ---------
+// RadioLib LoRaWAN example
+// https://github.com/jgromes/RadioLib/tree/master/examples/LoRaWAN/LoRaWAN_End_Device_Reference
+//
+//
+// Library dependencies (tested versions):
+// ---------------------------------------
+// RadioLib                             6.4.2
+// LoRa_Serialization                   3.2.1
+// ESP32Time                            2.0.0
+//
+//
+// created: 03/2023
+//
+//
+// MIT License
+//
+// Copyright (c) 2022 Matthias Prinke
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+//
+// History:
+//
+// 20240216 Created from matthias-bs/growatt2lorawan
+//
+// Notes:
+// - After a successful transmission, the controller can go into deep sleep
+//   (option SLEEP_EN)
+// - Sleep time is defined in SLEEP_INTERVAL
+// - If joining the network or transmitting uplink data fails,
+//   the controller can go into deep sleep
+//   (option FORCE_SLEEP)
+// - Timeout is defined in SLEEP_TIMEOUT_INITIAL and SLEEP_TIMEOUT_JOINED
+// - The EEPROM(?) is used to store information about the LoRaWAN 
+//   network session; this speeds up the connection after a restart
+//   significantly
+// - settimeofday()/gettimeofday() must be used to access the ESP32's RTC time
+// - Arduino ESP32 package has built-in time zone handling, see 
+//   https://github.com/SensorsIot/NTP-time-for-ESP8266-and-ESP32/blob/master/NTP_Example/NTP_Example.ino
+//
+///////////////////////////////////////////////////////////////////////////////
 
 // include the library
 #include <RadioLib.h>
+#include <Preferences.h>
+#include "src/settings.h"
+#include "src/payload.h"
+
+//-----------------------------------------------------------------------------
+//
+// User Configuration
+//
+
+// Enable debug mode (debug messages via serial port)
+#define _DEBUG_MODE_
+
+// Enable sleep mode - sleep after successful transmission to TTN (recommended!)
+//#define SLEEP_EN
+
+// Enable setting RTC from LoRaWAN network time
+#define GET_NETWORKTIME
+
+#if defined(GET_NETWORKTIME)
+    // Enter your time zone (https://remotemonitoringsystems.ca/time-zone-abbreviations.php)
+    const char* TZ_INFO    = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
+
+    // RTC to network time sync interval (in minutes)
+    #define CLOCK_SYNC_INTERVAL 24 * 60
+#endif
+
+// Number of uplink ports
+#define NUM_PORTS 2
+
+// Uplink period multipliers
+#define UPLINK_PERIOD_MULTIPLIERS {1, 5}
+typedef struct {
+    int port;
+    int mult;
+} Schedule;
+
+const Schedule UplinkSchedule[NUM_PORTS] = {
+  // {port, mult}
+  {1, 1},
+  {2, 2}
+};
+
+// If SLEEP_EN is defined, MCU will sleep for SLEEP_INTERVAL seconds after succesful transmission
+#define SLEEP_INTERVAL 360
+
+// Long sleep interval, MCU will sleep for SLEEP_INTERVAL_LONG seconds if battery voltage is below BATTERY_WEAK
+#define SLEEP_INTERVAL_LONG 900
+
+// Force deep sleep after a certain time, even if transmission was not completed
+//#define FORCE_SLEEP
+
+// During initialization (not joined), force deep sleep after SLEEP_TIMEOUT_INITIAL (if enabled)
+#define SLEEP_TIMEOUT_INITIAL 1800
+
+// If already joined, force deep sleep after SLEEP_TIMEOUT_JOINED seconds (if enabled)
+#define SLEEP_TIMEOUT_JOINED 600
+
+// Additional timeout to be applied after joining if Network Time Request pending
+#define SLEEP_TIMEOUT_EXTRA 300
+
+// Debug printing
+// To enable debug mode (debug messages via serial port):
+// Arduino IDE: Tools->Core Debug Level: "Debug|Verbose"
+// or
+// set CORE_DEBUG_LEVEL in BresserWeatherSensorTTNCfg.h
+#define DEBUG_PORT Serial2
+#define DEBUG_PRINTF(...) { log_d(__VA_ARGS__); }
+
+//-----------------------------------------------------------------------------
+
+#if defined(GET_NETWORKTIME)
+  #include <ESP32Time.h>
+#endif
+
+// LoRa_Serialization
+#include <LoraMessage.h>
+
+// Pin mappings for some common ESP32 LoRaWAN boards.
+// The ARDUINO_* defines are set by selecting the appropriate board (and borad variant, if applicable) in the Arduino IDE.
+// The default SPI port of the specific board will be used.
+#if defined(ARDUINO_TTGO_LoRa32_V1)
+    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v1/pins_arduino.h
+    // http://www.lilygo.cn/prod_view.aspx?TypeId=50003&Id=1130&FId=t3:50003:3
+    // https://github.com/Xinyuan-LilyGo/TTGO-LoRa-Series
+    // https://github.com/LilyGO/TTGO-LORA32/blob/master/schematic1in6.pdf
+    #define PIN_LMIC_NSS      LORA_CS
+    #define PIN_LMIC_RST      LORA_RST
+    #define PIN_LMIC_DIO0     LORA_IRQ
+    #define PIN_LMIC_DIO1     33
+    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
+
+#elif defined(ARDUINO_TTGO_LoRa32_V2)
+    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v2/pins_arduino.h
+    #define PIN_LMIC_NSS      LORA_CS
+    #define PIN_LMIC_RST      LORA_RST
+    #define PIN_LMIC_DIO0     LORA_IRQ
+    #define PIN_LMIC_DIO1     33
+    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
+    #pragma message("LoRa DIO1 must be wired to GPIO33 manually!")
+
+#elif defined(ARDUINO_TTGO_LoRa32_v21new)
+    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v21new/pins_arduino.h
+    #define PIN_LMIC_NSS      LORA_CS
+    #define PIN_LMIC_RST      LORA_RST
+    #define PIN_LMIC_DIO0     LORA_IRQ
+    #define PIN_LMIC_DIO1     LORA_D1
+    #define PIN_LMIC_DIO2     LORA_D2
+
+#elif defined(ARDUINO_heltec_wireless_stick) || defined(ARDUINO_heltec_wifi_lora_32_V2)
+    // https://github.com/espressif/arduino-esp32/blob/master/variants/heltec_wireless_stick/pins_arduino.h
+    // https://github.com/espressif/arduino-esp32/tree/master/variants/heltec_wifi_lora_32_V2/pins_ardiono.h
+    #define PIN_LMIC_NSS      SS
+    #define PIN_LMIC_RST      RST_LoRa
+    #define PIN_LMIC_DIO0     DIO0
+    #define PIN_LMIC_DIO1     DIO1
+    #define PIN_LMIC_DIO2     DIO2
+
+#elif defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
+    #define PIN_LMIC_NSS      6
+    #define PIN_LMIC_RST      9
+    #define PIN_LMIC_DIO0     5
+    #define PIN_LMIC_DIO1     11
+    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
+    #pragma message("ARDUINO_ADAFRUIT_FEATHER_ESP32S2 defined; assuming RFM95W FeatherWing will be used")
+    #pragma message("Required wiring: E to IRQ, D to CS, C to RST, A to DI01")
+    #pragma message("BLE is not available!")
+
+#elif defined(ARDUINO_FEATHER_ESP32)
+    #define PIN_LMIC_NSS      14
+    #define PIN_LMIC_RST      27
+    #define PIN_LMIC_DIO0     32
+    #define PIN_LMIC_DIO1     33
+    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
+    #pragma message("NOT TESTED!!!")
+    #pragma message("ARDUINO_ADAFRUIT_FEATHER_ESP32 defined; assuming RFM95W FeatherWing will be used")
+    #pragma message("Required wiring: A to RST, B to DIO1, D to DIO0, E to CS")
+
+#elif defined(FIREBEETLE_ESP32_COVER_LORA)
+    // https://wiki.dfrobot.com/FireBeetle_ESP32_IOT_Microcontroller(V3.0)__Supports_Wi-Fi_&_Bluetooth__SKU__DFR0478
+    // https://wiki.dfrobot.com/FireBeetle_Covers_LoRa_Radio_868MHz_SKU_TEL0125
+    #define PIN_LMIC_NSS      27 // D4
+    #define PIN_LMIC_RST      25 // D2
+    #define PIN_LMIC_DIO0     26 // D3
+    #define PIN_LMIC_DIO1      9 // D5
+    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
+    #pragma message("FIREBEETLE_ESP32_COVER_LORA defined; assuming FireBeetle ESP32 with FireBeetle Cover LoRa will be used")
+    #pragma message("Required wiring: D2 to RESET, D3 to DIO0, D4 to CS, D5 to DIO1")
+
+#elif defined(LORAWAN_NODE)
+    // LoRaWAN_Node board
+    // https://github.com/matthias-bs/LoRaWAN_Node
+    #pragma message("LORAWAN_NODE defined; assuming LoRaWAN_Node board will be used")
+    #define PIN_LMIC_NSS      14
+    #define PIN_LMIC_RST      12
+    #define PIN_LMIC_DIO0     4
+    #define PIN_LMIC_DIO1     16
+    #define PIN_LMIC_DIO2     17
+
+#else
+    #pragma message("Unknown board; please select one in the Arduino IDE or in settings.h or create your own!")
+    
+    // definitions for generic CI target ESP32:ESP32:ESP32
+    #define PIN_LMIC_NSS      14
+    #define PIN_LMIC_RST      12
+    #define PIN_LMIC_DIO0     4
+    #define PIN_LMIC_DIO1     16
+    #define PIN_LMIC_DIO2     17
+
+#endif
+
+/// Modbus interface select: 0 - USB / 1 - RS485
+bool modbusRS485;
+
+// Uplink message payload size
+// The maximum allowed for all data rates is 51 bytes.
+const uint8_t PAYLOAD_SIZE = 51;
+
+/// Uplink payload buffer
+static uint8_t loraData[PAYLOAD_SIZE];
+
+/// ESP32 preferences (stored in flash memory)
+Preferences preferences;
+
+struct sPrefs {
+  uint16_t  sleep_interval;       //!< preferences: sleep interval
+  uint16_t  sleep_interval_long;  //!< preferences: sleep interval long
+} prefs;
 
 // SX1262 has the following pin order:
 // Module(NSS/CS, DIO1, RESET, BUSY)
@@ -33,7 +265,7 @@
 
 // SX1278 has the following pin order:
 // Module(NSS/CS, DIO0, RESET, DIO1)
-SX1278 radio = new Module(10, 2, 9, 3);
+SX1278 radio = new Module(PIN_LMIC_NSS, PIN_LMIC_DIO0, PIN_LMIC_RST, PIN_LMIC_DIO1);
 
 // create the node instance on the EU-868 band
 // using the radio module and the encryption key
@@ -50,7 +282,20 @@ LoRaWANNode node(&radio, &EU868);
 */
 
 void setup() {
-  Serial.begin(9600);
+    pinMode(INTERFACE_SEL, INPUT_PULLUP);
+    modbusRS485 = digitalRead(INTERFACE_SEL);
+    
+
+    // set baud rate
+    if (modbusRS485) {
+        Serial.begin(115200);
+        log_d("Modbus interface: RS485");
+    } else {
+        Serial.setDebugOutput(false);
+        DEBUG_PORT.begin(115200, SERIAL_8N1, DEBUG_RX, DEBUG_TX);
+        DEBUG_PORT.setDebugOutput(true);
+        log_d("Modbus interface: USB");
+    }
 
   // initialize radio (SX1262 / SX1278 / ... ) with default settings
   Serial.print(F("[Radio] Initializing ... "));
@@ -63,32 +308,37 @@ void setup() {
     while(true);
   }
 
-  // application identifier - pre-LoRaWAN 1.1.0, this was called appEUI
-  // when adding new end device in TTN, you will have to enter this number
-  // you can pick any number you want, but it has to be unique
-  uint64_t joinEUI = 0x12AD1011B0C0FFEE;
+  // APPEUI, DEVEUI and APPKEY
+  #include "secrets.h"
 
-  // device identifier - this number can be anything
-  // when adding new end device in TTN, you can generate this number,
-  // or you can set any value you want, provided it is also unique
-  uint64_t devEUI = 0x70B3D57ED005E120;
-
-  // select some encryption keys which will be used to secure the communication
-  // there are two of them - network key and application key
-  // because LoRaWAN uses AES-128, the key MUST be 16 bytes (or characters) long
-
-  // network key is the ASCII string "topSecretKey1234"
-  uint8_t nwkKey[] = { 0x74, 0x6F, 0x70, 0x53, 0x65, 0x63, 0x72, 0x65,
-                       0x74, 0x4B, 0x65, 0x79, 0x31, 0x32, 0x33, 0x34 };
-
-  // application key is the ASCII string "aDifferentKeyABC"
-  uint8_t appKey[] = { 0x61, 0x44, 0x69, 0x66, 0x66, 0x65, 0x72, 0x65,
-                       0x6E, 0x74, 0x4B, 0x65, 0x79, 0x41, 0x42, 0x43 };
-
-  // prior to LoRaWAN 1.1.0, only a single "nwkKey" is used
-  // when connecting to LoRaWAN 1.0 network, "appKey" will be disregarded
-  // and can be set to NULL
-
+  #ifndef SECRETS
+    #define SECRETS
+    // application identifier - pre-LoRaWAN 1.1.0, this was called appEUI
+    // when adding new end device in TTN, you will have to enter this number
+    // you can pick any number you want, but it has to be unique
+    uint64_t joinEUI = 0x12AD1011B0C0FFEE;
+  
+    // device identifier - this number can be anything
+    // when adding new end device in TTN, you can generate this number,
+    // or you can set any value you want, provided it is also unique
+    uint64_t devEUI = 0x70B3D57ED005E120;
+  
+    // select some encryption keys which will be used to secure the communication
+    // there are two of them - network key and application key
+    // because LoRaWAN uses AES-128, the key MUST be 16 bytes (or characters) long
+  
+    // network key is the ASCII string "topSecretKey1234"
+    uint8_t nwkKey[] = { 0x74, 0x6F, 0x70, 0x53, 0x65, 0x63, 0x72, 0x65,
+                         0x74, 0x4B, 0x65, 0x79, 0x31, 0x32, 0x33, 0x34 };
+  
+    // application key is the ASCII string "aDifferentKeyABC"
+    uint8_t appKey[] = { 0x61, 0x44, 0x69, 0x66, 0x66, 0x65, 0x72, 0x65,
+                         0x6E, 0x74, 0x4B, 0x65, 0x79, 0x41, 0x42, 0x43 };
+  
+    // prior to LoRaWAN 1.1.0, only a single "nwkKey" is used
+    // when connecting to LoRaWAN 1.0 network, "appKey" will be disregarded
+    // and can be set to NULL
+  #endif
 
   // now we can start the activation
   // this can take up to 10 seconds, and requires a LoRaWAN gateway in range
@@ -110,7 +360,8 @@ void setup() {
   }
 
   Serial.print("[LoRaWAN] DevAddr: ");
-  Serial.println(node.getDevAddr(), HEX);
+  // TODO enable after RadioLib update
+  //Serial.println(node.getDevAddr(), HEX);
 
   // on EEPROM-enabled boards, after the device has been activated,
   // the session can be restored without rejoining after device power cycle
@@ -167,6 +418,7 @@ void loop() {
   // 1 = lowest (empty battery)
   // 254 = highest (full battery)
   // 255 = unable to measure
+  // TODO: Add battery voltage measurement
   uint8_t battLevel = 146;
   node.setDeviceStatus(battLevel);
 
@@ -174,17 +426,26 @@ void loop() {
   uint32_t fcntUp = node.getFcntUp();
 
   Serial.print(F("[LoRaWAN] Sending uplink packet ... "));
-  String strUp = "Hello!" + String(fcntUp);
+  // String strUp = "Hello!" + String(fcntUp);
   
-  // send a confirmed uplink to port 10 every 64th frame
-  // and also request the LinkCheck and DeviceTime MAC commands
-  if(fcntUp % 64 == 0) {
-    node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
-    node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
-    state = node.uplink(strUp, 10, true);
-  } else {
-    state = node.uplink(strUp, 10);
-  }
+  // // send a confirmed uplink to port 10 every 64th frame
+  // // and also request the LinkCheck and DeviceTime MAC commands
+  // if(fcntUp % 64 == 0) {
+  //   node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
+  //   node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
+  //   state = node.uplink(strUp, 10, true);
+  // } else {
+  //   state = node.uplink(strUp, 10);
+  // }
+  uint8_t port = 0;
+  LoraEncoder encoder(loraData);
+  #ifdef GEN_PAYLOAD
+      gen_payload(port, encoder);
+  #else
+      get_payload(port, encoder);
+  #endif
+  state = node.uplink(loraData, encoder.getLength(), port);
+
   if(state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
   } else {
@@ -285,9 +546,7 @@ void loop() {
 
   // on EEPROM enabled boards, you can save the current session
   // by calling "saveSession" which allows retrieving the session after reboot or deepsleep
-  /*
-    node.saveSession();
-  */
+  node.saveSession();
 
   // wait before sending another packet
   uint32_t minimumDelay = 60000;                  // try to send once every minute

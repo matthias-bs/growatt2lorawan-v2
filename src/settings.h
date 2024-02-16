@@ -46,7 +46,7 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(ARDUINO_ESP32_DEV)
+#if defined(ARDUINO_ESP32_DEV) || defined(ARDUINO_DFROBOT_FIREBEETLE_ESP32)
     // Both variants below are based on DFRobot FireBeetle ESP32; 
     // which uses the rather unspecific "ARDUINO_ESP32_DEV"
     #define FIREBEETLE_ESP32_COVER_LORA
