@@ -155,6 +155,8 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
   #define PIN_LORA_GPIO     16
   #define LORA_CHIP SX1276
 
+  LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
+  
   // SX1262  pin order: Module(NSS/CS, DIO1, RESET, BUSY);
   // SX1262 radio = new Module(8, 14, 12, 13);
 
