@@ -1,5 +1,3 @@
-#define SECRETS
-
 //-------------------------------
 // --> REPLACE BY YOUR VALUES <--
 //-------------------------------
@@ -9,11 +7,15 @@
 #define RADIOLIB_LORAWAN_JOIN_EUI  0x0000000000000000
 
 // The Device EUI & two keys can be generated on the TTN console 
-// Replace with your Device EUI
-#define RADIOLIB_LORAWAN_DEV_EUI   0x---------------
+#ifndef RADIOLIB_LORAWAN_DEV_EUI   // Replace with your Device EUI
+#define RADIOLIB_LORAWAN_DEV_EUI   0x0000000000000000
+#endif
+#ifndef RADIOLIB_LORAWAN_APP_KEY   // Replace with your App Key 
+#define RADIOLIB_LORAWAN_APP_KEY   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 
+#endif
+#ifndef RADIOLIB_LORAWAN_NWK_KEY   // Put your Nwk Key here
+#define RADIOLIB_LORAWAN_NWK_KEY   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+#endif
 
-// Replace with your App Key 
-#define RADIOLIB_LORAWAN_APP_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x-- 
-
-// Put your Nwk Key here
-#define RADIOLIB_LORAWAN_NWK_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--
+// For the curious, the #ifndef blocks allow for automated testing &/or you can
+// put your EUI & keys in to your platformio.ini - see RadioLib wiki for more tips
