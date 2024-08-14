@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////////////
 // growatt2lorawan-v2.ino
-// 
+//
 // LoRaWAN Node for Growatt PV-Inverter Data Interface
 //
 // - implements power saving by using the ESP32 deep sleep mode
 // - implements fast re-joining after sleep by storing network session data
 // - LoRa_Serialization is used for encoding various data types into bytes
-// - internal Real-Time Clock (RTC) set from LoRaWAN network time (optional)
+// - internal Real-Time Clock (RTC) set from LoRaWAN network time
 //
 //
 // Based on:
@@ -17,28 +17,28 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             6.4.2
+// RadioLib                             6.6.0
 // LoRa_Serialization                   3.2.1
-// ESP32Time                            2.0.0
+// ESP32Time                            2.0.6
 //
 //
-// created: 03/2023
+// created: 07/2024
 //
 //
 // MIT License
 //
-// Copyright (c) 2022 Matthias Prinke
-// 
+// Copyright (c) 2024 Matthias Prinke
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -51,195 +51,59 @@
 // History:
 //
 // 20240216 Created from matthias-bs/growatt2lorawan
+// 20240814 Initial draft version
+//
 //
 // Notes:
-// - After a successful transmission, the controller can go into deep sleep
-//   (option SLEEP_EN)
-// - Sleep time is defined in SLEEP_INTERVAL
-// - If joining the network or transmitting uplink data fails,
-//   the controller can go into deep sleep
-//   (option FORCE_SLEEP)
-// - Timeout is defined in SLEEP_TIMEOUT_INITIAL and SLEEP_TIMEOUT_JOINED
-// - The EEPROM(?) is used to store information about the LoRaWAN 
-//   network session; this speeds up the connection after a restart
-//   significantly
+// - Set "Core Debug Level: Debug" for initial testing
+// - The lines with "#pragma message()" in the compiler output are not errors, but useful hints!
+// - The default LoRaWAN credentials are read at compile time from secrets.h (included in config.h),
+//   they can be overriden by the JSON file secrets.json placed in LittleFS (ToDo).
+//   (Use https://github.com/earlephilhower/arduino-littlefs-upload for uploading.)
+// - Pin mapping of radio transceiver module is done in config.h
+// - Pin mapping of RS485 interface is done in growatt_cfg.h
+// - For LoRaWAN Specification 1.1.0, a small set of data (the "nonces") have to be stored persistently -
+//   this implementation uses Flash (via Preferences library
+// - Storing LoRaWAN network session information speeds up the connection (join) after a restart -
+//   this implementation uses the ESP32's RTC RAM or a variable located in the RP2040's RAM, respectively.
+//   In the latter case, an uninitialzed linker section is used for this purpose.
 // - settimeofday()/gettimeofday() must be used to access the ESP32's RTC time
-// - Arduino ESP32 package has built-in time zone handling, see 
+// - Arduino ESP32 package has built-in time zone handling, see
 //   https://github.com/SensorsIot/NTP-time-for-ESP8266-and-ESP32/blob/master/NTP_Example/NTP_Example.ino
 //
 ///////////////////////////////////////////////////////////////////////////////
+/*! \file growatt2lorawan-v2.ino */
 
 // include the library
 #include <RadioLib.h>
 #include <Preferences.h>
-#include "src/settings.h"
-#include "src/payload.h"
+#include "config.h"
+#include "growatt2lorawan_cfg.h"
+#include "src/growatt_cfg.h"
+#include "src/growatt2lorawan_cmd.h"
+#include "src/AppLayer.h"
 
 //-----------------------------------------------------------------------------
-//
-// User Configuration
-//
 
-// Enable debug mode (debug messages via serial port)
-#define _DEBUG_MODE_
-
-// Enable sleep mode - sleep after successful transmission to TTN (recommended!)
-//#define SLEEP_EN
-
-// Enable setting RTC from LoRaWAN network time
-#define GET_NETWORKTIME
-
-#if defined(GET_NETWORKTIME)
-    // Enter your time zone (https://remotemonitoringsystems.ca/time-zone-abbreviations.php)
-    const char* TZ_INFO    = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
-
-    // RTC to network time sync interval (in minutes)
-    #define CLOCK_SYNC_INTERVAL 24 * 60
-#endif
-
-// Number of uplink ports
-#define NUM_PORTS 2
-
-// Uplink period multipliers
-#define UPLINK_PERIOD_MULTIPLIERS {1, 5}
-typedef struct {
-    int port;
-    int mult;
+typedef struct
+{
+  int port;
+  int mult;
 } Schedule;
 
 const Schedule UplinkSchedule[NUM_PORTS] = {
-  // {port, mult}
-  {1, 1},
-  {2, 2}
-};
+    // {port, mult}
+    {1, 1},
+    {2, 2}};
 
-// If SLEEP_EN is defined, MCU will sleep for SLEEP_INTERVAL seconds after succesful transmission
-#define SLEEP_INTERVAL 360
 
-// Long sleep interval, MCU will sleep for SLEEP_INTERVAL_LONG seconds if battery voltage is below BATTERY_WEAK
-#define SLEEP_INTERVAL_LONG 900
-
-// Force deep sleep after a certain time, even if transmission was not completed
-//#define FORCE_SLEEP
-
-// During initialization (not joined), force deep sleep after SLEEP_TIMEOUT_INITIAL (if enabled)
-#define SLEEP_TIMEOUT_INITIAL 1800
-
-// If already joined, force deep sleep after SLEEP_TIMEOUT_JOINED seconds (if enabled)
-#define SLEEP_TIMEOUT_JOINED 600
-
-// Additional timeout to be applied after joining if Network Time Request pending
-#define SLEEP_TIMEOUT_EXTRA 300
-
-// Debug printing
-// To enable debug mode (debug messages via serial port):
-// Arduino IDE: Tools->Core Debug Level: "Debug|Verbose"
-// or
-// set CORE_DEBUG_LEVEL in BresserWeatherSensorTTNCfg.h
-#define DEBUG_PORT Serial2
-#define DEBUG_PRINTF(...) { log_d(__VA_ARGS__); }
 
 //-----------------------------------------------------------------------------
 
-#if defined(GET_NETWORKTIME)
-  #include <ESP32Time.h>
-#endif
+#include <ESP32Time.h>
 
 // LoRa_Serialization
 #include <LoraMessage.h>
-
-// Pin mappings for some common ESP32 LoRaWAN boards.
-// The ARDUINO_* defines are set by selecting the appropriate board (and borad variant, if applicable) in the Arduino IDE.
-// The default SPI port of the specific board will be used.
-#if defined(ARDUINO_TTGO_LoRa32_V1)
-    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v1/pins_arduino.h
-    // http://www.lilygo.cn/prod_view.aspx?TypeId=50003&Id=1130&FId=t3:50003:3
-    // https://github.com/Xinyuan-LilyGo/TTGO-LoRa-Series
-    // https://github.com/LilyGO/TTGO-LORA32/blob/master/schematic1in6.pdf
-    #define PIN_LMIC_NSS      LORA_CS
-    #define PIN_LMIC_RST      LORA_RST
-    #define PIN_LMIC_DIO0     LORA_IRQ
-    #define PIN_LMIC_DIO1     33
-    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
-
-#elif defined(ARDUINO_TTGO_LoRa32_V2)
-    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v2/pins_arduino.h
-    #define PIN_LMIC_NSS      LORA_CS
-    #define PIN_LMIC_RST      LORA_RST
-    #define PIN_LMIC_DIO0     LORA_IRQ
-    #define PIN_LMIC_DIO1     33
-    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
-    #pragma message("LoRa DIO1 must be wired to GPIO33 manually!")
-
-#elif defined(ARDUINO_TTGO_LoRa32_v21new)
-    // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v21new/pins_arduino.h
-    #define PIN_LMIC_NSS      LORA_CS
-    #define PIN_LMIC_RST      LORA_RST
-    #define PIN_LMIC_DIO0     LORA_IRQ
-    #define PIN_LMIC_DIO1     LORA_D1
-    #define PIN_LMIC_DIO2     LORA_D2
-
-#elif defined(ARDUINO_heltec_wireless_stick) || defined(ARDUINO_heltec_wifi_lora_32_V2)
-    // https://github.com/espressif/arduino-esp32/blob/master/variants/heltec_wireless_stick/pins_arduino.h
-    // https://github.com/espressif/arduino-esp32/tree/master/variants/heltec_wifi_lora_32_V2/pins_ardiono.h
-    #define PIN_LMIC_NSS      SS
-    #define PIN_LMIC_RST      RST_LoRa
-    #define PIN_LMIC_DIO0     DIO0
-    #define PIN_LMIC_DIO1     DIO1
-    #define PIN_LMIC_DIO2     DIO2
-
-#elif defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
-    #define PIN_LMIC_NSS      6
-    #define PIN_LMIC_RST      9
-    #define PIN_LMIC_DIO0     5
-    #define PIN_LMIC_DIO1     11
-    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
-    #pragma message("ARDUINO_ADAFRUIT_FEATHER_ESP32S2 defined; assuming RFM95W FeatherWing will be used")
-    #pragma message("Required wiring: E to IRQ, D to CS, C to RST, A to DI01")
-    #pragma message("BLE is not available!")
-
-#elif defined(ARDUINO_FEATHER_ESP32)
-    #define PIN_LMIC_NSS      14
-    #define PIN_LMIC_RST      27
-    #define PIN_LMIC_DIO0     32
-    #define PIN_LMIC_DIO1     33
-    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
-    #pragma message("NOT TESTED!!!")
-    #pragma message("ARDUINO_ADAFRUIT_FEATHER_ESP32 defined; assuming RFM95W FeatherWing will be used")
-    #pragma message("Required wiring: A to RST, B to DIO1, D to DIO0, E to CS")
-
-#elif defined(FIREBEETLE_ESP32_COVER_LORA)
-    // https://wiki.dfrobot.com/FireBeetle_ESP32_IOT_Microcontroller(V3.0)__Supports_Wi-Fi_&_Bluetooth__SKU__DFR0478
-    // https://wiki.dfrobot.com/FireBeetle_Covers_LoRa_Radio_868MHz_SKU_TEL0125
-    #define PIN_LMIC_NSS      27 // D4
-    #define PIN_LMIC_RST      25 // D2
-    #define PIN_LMIC_DIO0     26 // D3
-    #define PIN_LMIC_DIO1      9 // D5
-    #define PIN_LMIC_DIO2     cMyLoRaWAN::lmic_pinmap::LMIC_UNUSED_PIN
-    #pragma message("FIREBEETLE_ESP32_COVER_LORA defined; assuming FireBeetle ESP32 with FireBeetle Cover LoRa will be used")
-    #pragma message("Required wiring: D2 to RESET, D3 to DIO0, D4 to CS, D5 to DIO1")
-
-#elif defined(LORAWAN_NODE)
-    // LoRaWAN_Node board
-    // https://github.com/matthias-bs/LoRaWAN_Node
-    #pragma message("LORAWAN_NODE defined; assuming LoRaWAN_Node board will be used")
-    #define PIN_LMIC_NSS      14
-    #define PIN_LMIC_RST      12
-    #define PIN_LMIC_DIO0     4
-    #define PIN_LMIC_DIO1     16
-    #define PIN_LMIC_DIO2     17
-
-#else
-    #pragma message("Unknown board; please select one in the Arduino IDE or in settings.h or create your own!")
-    
-    // definitions for generic CI target ESP32:ESP32:ESP32
-    #define PIN_LMIC_NSS      14
-    #define PIN_LMIC_RST      12
-    #define PIN_LMIC_DIO0     4
-    #define PIN_LMIC_DIO1     16
-    #define PIN_LMIC_DIO2     17
-
-#endif
 
 /// Modbus interface select: 0 - USB / 1 - RS485
 bool modbusRS485;
@@ -251,307 +115,640 @@ const uint8_t PAYLOAD_SIZE = 51;
 /// Uplink payload buffer
 static uint8_t loraData[PAYLOAD_SIZE];
 
+/// Uplink interval
+const uint32_t uplinkPeriodMs = 6 * 60 * 1000;
+
+/// Commanded (by downlink message) uplink request
+uint8_t cmdUplinkReq = 0;
+
+/// Scheduled uplink request
+bool schedUplinkReq[NUM_PORTS];
+
+
+
 /// ESP32 preferences (stored in flash memory)
 Preferences preferences;
 
-struct sPrefs {
-  uint16_t  sleep_interval;       //!< preferences: sleep interval
-  uint16_t  sleep_interval_long;  //!< preferences: sleep interval long
+static Preferences store;
+
+struct sPrefs
+{
+  uint16_t sleep_interval;      //!< preferences: sleep interval
+  uint16_t sleep_interval_long; //!< preferences: sleep interval long
+  uint8_t lw_stat_interval;     //!< preferences: LoRaWAN node status uplink interval
 } prefs;
 
-// SX1262 has the following pin order:
-// Module(NSS/CS, DIO1, RESET, BUSY)
-// SX1262 radio = new Module(8, 14, 12, 13);
 
-// SX1278 has the following pin order:
-// Module(NSS/CS, DIO0, RESET, DIO1)
-SX1278 radio = new Module(PIN_LMIC_NSS, PIN_LMIC_DIO0, PIN_LMIC_RST, PIN_LMIC_DIO1);
 
-// create the node instance on the EU-868 band
-// using the radio module and the encryption key
-// make sure you are using the correct band
-// based on your geographical location!
-LoRaWANNode node(&radio, &EU868);
+// Time zone info
+const char *TZ_INFO = TZINFO_STR;
 
-// for fixed bands with subband selection
-// such as US915 and AU915, you must specify
-// the subband that matches the Frequency Plan
-// that you selected on your LoRaWAN console
-/*
-  LoRaWANNode node(&radio, &US915, 2);
-*/
+// Variables which must retain their values after deep sleep
+#if defined(ESP32)
+// Stored in RTC RAM
+RTC_DATA_ATTR bool longSleep;              //!< last sleep interval; 0 - normal / 1 - long
+RTC_DATA_ATTR time_t rtcLastClockSync = 0; //!< timestamp of last RTC synchonization to network time
 
-void setup() {
-    pinMode(INTERFACE_SEL, INPUT_PULLUP);
-    modbusRS485 = digitalRead(INTERFACE_SEL);
-    
+// utilities & vars to support ESP32 deep-sleep. The RTC_DATA_ATTR attribute
+// puts these in to the RTC memory which is preserved during deep-sleep
+RTC_DATA_ATTR uint16_t bootCount = 1;
+RTC_DATA_ATTR uint16_t bootCountSinceUnsuccessfulJoin = 0;
+RTC_DATA_ATTR E_TIME_SOURCE rtcTimeSource;
+RTC_DATA_ATTR bool appStatusUplinkPending = false;
+RTC_DATA_ATTR bool lwStatusUplinkPending = false;
+RTC_DATA_ATTR uint8_t LWsession[RADIOLIB_LORAWAN_SESSION_BUF_SIZE];
 
-    // set baud rate
-    if (modbusRS485) {
-        Serial.begin(115200);
-        log_d("Modbus interface: RS485");
-    } else {
-        Serial.setDebugOutput(false);
-        DEBUG_PORT.begin(115200, SERIAL_8N1, DEBUG_RX, DEBUG_TX);
-        DEBUG_PORT.setDebugOutput(true);
-        log_d("Modbus interface: USB");
-    }
+#else
+// Saved to/restored from Watchdog SCRATCH registers
+bool longSleep;          //!< last sleep interval; 0 - normal / 1 - long
+time_t rtcLastClockSync; //!< timestamp of last RTC synchonization to network time
 
-  // initialize radio (SX1262 / SX1278 / ... ) with default settings
-  Serial.print(F("[Radio] Initializing ... "));
-  int state = radio.begin();
-  if(state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
-    while(true);
+// utilities & vars to support deep-sleep
+// Saved to/restored from Watchdog SCRATCH registers
+uint16_t bootCount;
+uint16_t bootCountSinceUnsuccessfulJoin;
+
+/// RP2040 RAM is preserved during sleep; we just have to ensure that it is not initialized at startup (after reset)
+uint8_t LWsession[RADIOLIB_LORAWAN_SESSION_BUF_SIZE] __attribute__((section(".uninitialized_data")));
+
+/// RTC time source
+E_TIME_SOURCE rtcTimeSource __attribute__((section(".uninitialized_data")));
+
+/// AppLayer status uplink pending
+bool appStatusUplinkPending __attribute__((section(".uninitialized_data")));
+
+/// LoRaWAN Node status uplink pending
+bool lwStatusUplinkPending __attribute__((section(".uninitialized_data")));
+#endif
+
+/// Real time clock
+ESP32Time rtc;
+
+/// Application layer
+AppLayer appLayer(&rtc, &rtcLastClockSync);
+
+#if defined(ESP32)
+/*!
+ * \brief Print wakeup reason (ESP32 only)
+ *
+ * Abbreviated version from the Arduino-ESP32 package, see
+ * https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/deepsleep.html
+ * for the complete set of options.
+ */
+void print_wakeup_reason()
+{
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
+  {
+    log_i("Wake from sleep");
   }
-
-  // APPEUI, DEVEUI and APPKEY
-  #include "secrets.h"
-
-  #ifndef SECRETS
-    #define SECRETS
-    // application identifier - pre-LoRaWAN 1.1.0, this was called appEUI
-    // when adding new end device in TTN, you will have to enter this number
-    // you can pick any number you want, but it has to be unique
-    uint64_t joinEUI = 0x12AD1011B0C0FFEE;
-  
-    // device identifier - this number can be anything
-    // when adding new end device in TTN, you can generate this number,
-    // or you can set any value you want, provided it is also unique
-    uint64_t devEUI = 0x70B3D57ED005E120;
-  
-    // select some encryption keys which will be used to secure the communication
-    // there are two of them - network key and application key
-    // because LoRaWAN uses AES-128, the key MUST be 16 bytes (or characters) long
-  
-    // network key is the ASCII string "topSecretKey1234"
-    uint8_t nwkKey[] = { 0x74, 0x6F, 0x70, 0x53, 0x65, 0x63, 0x72, 0x65,
-                         0x74, 0x4B, 0x65, 0x79, 0x31, 0x32, 0x33, 0x34 };
-  
-    // application key is the ASCII string "aDifferentKeyABC"
-    uint8_t appKey[] = { 0x61, 0x44, 0x69, 0x66, 0x66, 0x65, 0x72, 0x65,
-                         0x6E, 0x74, 0x4B, 0x65, 0x79, 0x41, 0x42, 0x43 };
-  
-    // prior to LoRaWAN 1.1.0, only a single "nwkKey" is used
-    // when connecting to LoRaWAN 1.0 network, "appKey" will be disregarded
-    // and can be set to NULL
-  #endif
-
-  // now we can start the activation
-  // this can take up to 10 seconds, and requires a LoRaWAN gateway in range
-  // a specific starting-datarate can be selected in dynamic bands (e.g. EU868):
-  /* 
-    uint8_t joinDr = 4;
-    state = node.beginOTAA(joinEUI, devEUI, nwkKey, appKey, joinDr);
-  */
-  Serial.print(F("[LoRaWAN] Attempting over-the-air activation ... "));
-  state = node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
-
-  if(state >= RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-    delay(2000);	// small delay between joining and uplink
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
-    while(true);
+  else
+  {
+    log_i("Wake not caused by deep sleep: %u", wakeup_reason);
   }
+}
+#endif
 
-  Serial.print("[LoRaWAN] DevAddr: ");
-  // TODO enable after RadioLib update
-  //Serial.println(node.getDevAddr(), HEX);
-
-  // on EEPROM-enabled boards, after the device has been activated,
-  // the session can be restored without rejoining after device power cycle
-  // this is intrinsically done when calling `beginOTAA()` with the same keys
-  // or if you 'lost' the keys or don't want them included in your sketch
-  // you can call `restore()`
-  /*
-    Serial.print(F("[LoRaWAN] Resuming previous session ... "));
-    state = node.restore();
-    if(state >= RADIOLIB_ERR_NONE) {
-      Serial.println(F("success!"));
-    } else {
-      Serial.print(F("failed, code "));
-      Serial.println(state);
-      while(true);
-    }
-  */
-
-  // disable the ADR algorithm
-  node.setADR(false);
-
-  // set a fixed datarate
-  node.setDatarate(5);
-  // in order to set the datarate persistent across reboot/deepsleep, use the following:
-  /*
-    node.setDatarate(5, true);  
-  */
-
-  // enable CSMA
-  // this tries to minimize packet loss by searching for a free channel
-  // before actually sending an uplink 
-  node.setCSMA(6, 2, true);
-
-  // enable or disable the dutycycle
-  // the second argument specific allowed airtime per hour in milliseconds
-  // 1250 = TTN FUP (30 seconds / 24 hours)
-  // if not called, this corresponds to setDutyCycle(true, 0)
-  // setting this to 0 corresponds to the band's maximum allowed dutycycle by law
-  node.setDutyCycle(true, 1250);
-
-  // enable or disable the dwell time limits
-  // the second argument specifies the allowed airtime per uplink in milliseconds
-  // unless specified, this argument is set to 0
-  // setting this to 0 corresponds to the band's maximum allowed dwell time by law
-  node.setDwellTime(true, 400);
+uint16_t getBatteryVoltage()
+{
+  // Dummy function, replace with actual code
+  return 0;
 }
 
-void loop() {
-  int state = RADIOLIB_ERR_NONE;
+/*!
+ * \brief Compute sleep duration
+ *
+ * Minimum duration: SLEEP_INTERVAL_MIN
+ * If battery voltage is available and <= BATTERY_WEAK:
+ *   sleep_interval_long
+ * else
+ *   sleep_interval
+ *
+ * Additionally, the sleep interval is reduced from the
+ * default value to achieve a wake-up time alinged to
+ * an integer multiple of the interval after a full hour.
+ *
+ * \returns sleep duration in seconds
+ */
+uint32_t sleepDuration(uint16_t battery_weak)
+{
+  uint32_t sleep_interval = prefs.sleep_interval;
+  longSleep = false;
 
-  // set battery fill level - the LoRaWAN network server
-  // may periodically request this information
+  uint16_t voltage = getBatteryVoltage();
+  // Long sleep interval if battery is weak
+  if (voltage && voltage <= battery_weak)
+  {
+    sleep_interval = prefs.sleep_interval_long;
+    longSleep = true;
+  }
+
+  // If the real time is available, align the wake-up time to the
+  // to next non-fractional multiple of sleep_interval past the hour
+  if (rtcLastClockSync)
+  {
+    struct tm timeinfo;
+    time_t t_now = rtc.getLocalEpoch();
+    localtime_r(&t_now, &timeinfo);
+
+    sleep_interval = sleep_interval - ((timeinfo.tm_min * 60) % sleep_interval + timeinfo.tm_sec);
+  }
+
+  sleep_interval = max(sleep_interval, static_cast<uint32_t>(SLEEP_INTERVAL_MIN));
+  return sleep_interval;
+}
+
+#if defined(ESP32)
+/*!
+ * \brief Enter sleep mode (ESP32 variant)
+ *
+ *  ESP32 deep sleep mode
+ *
+ * \param seconds sleep duration in seconds
+ */
+void gotoSleep(uint32_t seconds)
+{
+  esp_sleep_enable_timer_wakeup(seconds * 1000UL * 1000UL); // function uses uS
+  log_i("Sleeping for %lu s", seconds);
+  Serial.flush();
+
+  esp_deep_sleep_start();
+
+  // if this appears in the serial debug, we didn't go to sleep!
+  // so take defensive action so we don't continually uplink
+  log_w("\n\n### Sleep failed, delay of 5 minutes & then restart ###");
+  delay(5UL * 60UL * 1000UL);
+  ESP.restart();
+}
+
+#else
+/*!
+ * \brief Enter sleep mode (RP2040 variant)
+ *
+ * \param seconds sleep duration in seconds
+ */
+void gotoSleep(uint32_t seconds)
+{
+  log_i("Sleeping for %lu s", seconds);
+  time_t t_now = rtc.getLocalEpoch();
+  datetime_t dt;
+  epoch_to_datetime(&t_now, &dt);
+  rtc_set_datetime(&dt);
+  sleep_us(64);
+  pico_sleep(seconds);
+
+  // Save variables to be retained after reset
+  watchdog_hw->scratch[3] = (bootCountSinceUnsuccessfulJoin << 16) | bootCount;
+  watchdog_hw->scratch[2] = rtcLastClockSync;
+
+  if (longSleep)
+  {
+    watchdog_hw->scratch[1] |= 2;
+  }
+  else
+  {
+    watchdog_hw->scratch[1] &= ~2;
+  }
+  // Save the current time, because RTC will be reset (SIC!)
+  rtc_get_datetime(&dt);
+  time_t now = datetime_to_epoch(&dt, NULL);
+  watchdog_hw->scratch[0] = now;
+  log_i("Now: %llu", now);
+
+  rp2040.restart();
+}
+#endif
+
+/// Print date and time (i.e. local time)
+void printDateTime(void)
+{
+  struct tm timeinfo;
+  char tbuf[25];
+
+  time_t tnow = rtc.getLocalEpoch();
+  localtime_r(&tnow, &timeinfo);
+  strftime(tbuf, 25, "%Y-%m-%d %H:%M:%S", &timeinfo);
+  log_i("%s", tbuf);
+}
+
+/*!
+ * \brief Activate node by restoring session or otherwise joining the network
+ *
+ * \return RADIOLIB_LORAWAN_NEW_SESSION or RADIOLIB_LORAWAN_SESSION_RESTORED
+ */
+int16_t lwActivate(void)
+{
+  int16_t state = RADIOLIB_ERR_UNKNOWN;
+
+  // setup the OTAA session information
+  node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
+
+  log_d("Recalling LoRaWAN nonces & session");
+  // ##### setup the flash storage
+  store.begin("radiolib");
+  // ##### if we have previously saved nonces, restore them and try to restore session as well
+  if (store.isKey("nonces"))
+  {
+    uint8_t buffer[RADIOLIB_LORAWAN_NONCES_BUF_SIZE];                   // create somewhere to store nonces
+    store.getBytes("nonces", buffer, RADIOLIB_LORAWAN_NONCES_BUF_SIZE); // get them from the store
+    state = node.setBufferNonces(buffer);                               // send them to LoRaWAN
+    debug(state != RADIOLIB_ERR_NONE, "Restoring nonces buffer failed", state, false);
+
+    // recall session from RTC deep-sleep preserved variable
+    state = node.setBufferSession(LWsession); // send them to LoRaWAN stack
+
+    // if we have booted more than once we should have a session to restore, so report any failure
+    // otherwise no point saying there's been a failure when it was bound to fail with an empty LWsession var.
+    debug((state != RADIOLIB_ERR_NONE) && (bootCount > 1), "Restoring session buffer failed", state, false);
+
+    // if Nonces and Session restored successfully, activation is just a formality
+    // moreover, Nonces didn't change so no need to re-save them
+    if (state == RADIOLIB_ERR_NONE)
+    {
+      log_d("Succesfully restored session - now activating");
+      state = node.activateOTAA();
+      debug((state != RADIOLIB_LORAWAN_SESSION_RESTORED), "Failed to activate restored session", state, true);
+
+      // ##### close the store before returning
+      store.end();
+      return (state);
+    }
+  }
+  else
+  { // store has no key "nonces"
+    log_d("No Nonces saved - starting fresh.");
+  }
+
+  // if we got here, there was no session to restore, so start trying to join
+  state = RADIOLIB_ERR_NETWORK_NOT_JOINED;
+  while (state != RADIOLIB_LORAWAN_NEW_SESSION)
+  {
+    log_d("Join ('login') to the LoRaWAN Network");
+    state = node.activateOTAA();
+
+    // ##### save the join counters (nonces) to permanent store
+    log_d("Saving nonces to flash");
+    uint8_t buffer[RADIOLIB_LORAWAN_NONCES_BUF_SIZE];                   // create somewhere to store nonces
+    uint8_t *persist = node.getBufferNonces();                          // get pointer to nonces
+    memcpy(buffer, persist, RADIOLIB_LORAWAN_NONCES_BUF_SIZE);          // copy in to buffer
+    store.putBytes("nonces", buffer, RADIOLIB_LORAWAN_NONCES_BUF_SIZE); // send them to the store
+
+    // we'll save the session after an uplink
+
+    if (state != RADIOLIB_LORAWAN_NEW_SESSION)
+    {
+      log_d("Join failed: %d", state);
+
+      // how long to wait before join attempts. This is an interim solution pending
+      // implementation of TS001 LoRaWAN Specification section #7 - this doc applies to v1.0.4 & v1.1
+      // it sleeps for longer & longer durations to give time for any gateway issues to resolve
+      // or whatever is interfering with the device <-> gateway airwaves.
+      uint32_t sleepForSeconds = min((bootCountSinceUnsuccessfulJoin++ + 1UL) * 60UL, 3UL * 60UL);
+      log_i("Boots since unsuccessful join: %u", bootCountSinceUnsuccessfulJoin);
+      log_i("Retrying join in %u seconds", sleepForSeconds);
+
+      gotoSleep(sleepForSeconds);
+
+    } // if activateOTAA state
+  } // while join
+
+  log_d("Joined");
+
+  // reset the failed join count
+  bootCountSinceUnsuccessfulJoin = 0;
+
+  delay(1000); // hold off off hitting the airwaves again too soon - an issue in the US
+
+  // ##### close the store
+  store.end();
+  return (state);
+}
+
+// setup & execute all device functions ...
+void setup()
+{
+  String timeZoneInfo(TZ_INFO);
+  uint16_t battery_weak = BATTERY_WEAK;
+  uint16_t battery_low = BATTERY_LOW;
+  uint16_t battery_discharge_lim = BATTERY_DISCHARGE_LIM;
+  uint16_t battery_charge_lim = BATTERY_CHARGE_LIM;
+
+  pinMode(INTERFACE_SEL, INPUT_PULLUP);
+  modbusRS485 = digitalRead(INTERFACE_SEL);
+
+  // set baud rate
+  if (modbusRS485)
+  {
+    Serial.begin(115200);
+    log_d("Modbus interface: RS485");
+  }
+  else
+  {
+    Serial.setDebugOutput(false);
+    DEBUG_PORT.begin(115200, SERIAL_8N1, DEBUG_RX, DEBUG_TX);
+    DEBUG_PORT.setDebugOutput(true);
+    log_d("Modbus interface: USB");
+  }
+
+  //  Set time zone
+  setenv("TZ", TZ_INFO, 1);
+  printDateTime();
+
+  // // Check if clock was never synchronized or sync interval has expired
+  // if ((rtcLastClockSync == 0) || ((rtc.getLocalEpoch() - rtcLastClockSync) > (CLOCK_SYNC_INTERVAL * 60)))
+  // {
+  //   log_d("RTC sync required");
+  //   rtcSyncReq = true;
+  // }
+
+#if defined(ARDUINO_ARCH_RP2040)
+  // see pico-sdk/src/rp2_common/hardware_rtc/rtc.c
+  rtc_init();
+
+  // Restore variables and RTC after reset
+  time_t time_saved = watchdog_hw->scratch[0];
+  datetime_t dt;
+  epoch_to_datetime(&time_saved, &dt);
+
+  // Set HW clock (only used in sleep mode)
+  rtc_set_datetime(&dt);
+
+  // Set SW clock
+  rtc.setTime(time_saved);
+
+  longSleep = ((watchdog_hw->scratch[1] & 2) == 2);
+  rtcLastClockSync = watchdog_hw->scratch[2];
+  bootCount = watchdog_hw->scratch[3] & 0xFFFF;
+  if (bootCount == 0)
+  {
+    bootCount = 1;
+  }
+  bootCountSinceUnsuccessfulJoin = watchdog_hw->scratch[3] >> 16;
+#else
+  print_wakeup_reason();
+#endif
+  log_i("Boot count: %u", bootCount++);
+
+  if (bootCount == 1)
+  {
+    rtcTimeSource = E_TIME_SOURCE::E_UNSYNCHED;
+    appStatusUplinkPending = 0;
+    lwStatusUplinkPending = 0;
+  }
+
+  // Set time zone
+  setenv("TZ", timeZoneInfo.c_str(), 1);
+  printDateTime();
+
+  // Try to load LoRaWAN secrets from LittleFS file, if available
+  // TODO
+  // loadSecrets(joinEUI, devEUI, nwkKey, appKey);
+
+  // Initialize Application Layer
+  appLayer.begin();
+
+  preferences.begin("BWS-LW", false);
+  prefs.sleep_interval = preferences.getUShort("sleep_int", SLEEP_INTERVAL);
+  log_d("Preferences: sleep_interval:        %u s", prefs.sleep_interval);
+  prefs.sleep_interval_long = preferences.getUShort("sleep_int_long", SLEEP_INTERVAL_LONG);
+  log_d("Preferences: sleep_interval_long:   %u s", prefs.sleep_interval_long);
+  prefs.lw_stat_interval = preferences.getUChar("lw_stat_int", LW_STATUS_INTERVAL);
+  log_d("Preferences: lw_stat_interval:      %u cycles", prefs.lw_stat_interval);
+  preferences.end();
+
+  uint16_t voltage = getBatteryVoltage();
+  if (voltage && voltage <= battery_low)
+  {
+    log_i("Battery low!");
+    gotoSleep(sleepDuration(battery_weak));
+  }
+
+  // build payload byte array (+ reserve to prevent overflow with configuration at run-time)
+  uint8_t uplinkPayload[PAYLOAD_SIZE + 8];
+
+  LoraEncoder encoder(uplinkPayload);
+
+  uint8_t port = 1;
+  appLayer.getPayloadStage1(port, encoder);
+
+  int16_t state = 0; // return value for calls to RadioLib
+
+  // setup the radio based on the pinmap (connections) in config.h
+  log_v("Initalise the radio");
+  radio.reset();
+  state = radio.begin();
+  debug(state != RADIOLIB_ERR_NONE, "Initalise radio failed", state, true);
+
+  // activate node by restoring session or otherwise joining the network
+  state = lwActivate();
+  // state is one of RADIOLIB_LORAWAN_NEW_SESSION or RADIOLIB_LORAWAN_SESSION_RESTORED
+
+  // Set battery fill level -
+  // the LoRaWAN network server may periodically request this information
   // 0 = external power source
   // 1 = lowest (empty battery)
   // 254 = highest (full battery)
   // 255 = unable to measure
-  // TODO: Add battery voltage measurement
-  uint8_t battLevel = 146;
+  uint8_t battLevel;
+  if (voltage == 0)
+  {
+    battLevel = 255;
+  }
+  else if (voltage > battery_charge_lim)
+  {
+    battLevel = 0;
+  }
+  else
+  {
+    battLevel = static_cast<uint8_t>(
+        static_cast<float>(voltage - battery_discharge_lim) / static_cast<float>(battery_charge_lim - battery_discharge_lim) * 255);
+    battLevel = (battLevel == 0) ? 1 : battLevel;
+    battLevel = (battLevel == 255) ? 254 : battLevel;
+  }
+  log_d("Battery level: %u", battLevel);
   node.setDeviceStatus(battLevel);
 
-  // retrieve the last uplink frame counter
-  uint32_t fcntUp = node.getFcntUp();
-
-  Serial.print(F("[LoRaWAN] Sending uplink packet ... "));
-  // String strUp = "Hello!" + String(fcntUp);
-  
-  // // send a confirmed uplink to port 10 every 64th frame
-  // // and also request the LinkCheck and DeviceTime MAC commands
-  // if(fcntUp % 64 == 0) {
-  //   node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
-  //   node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
-  //   state = node.uplink(strUp, 10, true);
-  // } else {
-  //   state = node.uplink(strUp, 10);
-  // }
-  uint8_t port = 0;
-  LoraEncoder encoder(loraData);
-  #ifdef GEN_PAYLOAD
-      gen_payload(port, encoder);
-  #else
-      get_payload(port, encoder);
-  #endif
-  state = node.uplink(loraData, encoder.getLength(), port);
-
-  if(state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
+  // Check if clock was never synchronized or sync interval has expired
+  if ((rtcLastClockSync == 0) || ((rtc.getLocalEpoch() - rtcLastClockSync) > (CLOCK_SYNC_INTERVAL * 60)))
+  {
+    log_i("RTC sync required");
+    node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
   }
 
-  // after uplink, you can call downlink(),
-  // to receive any possible reply from the server
-  // this function must be called within a few seconds
-  // after uplink to receive the downlink!
-  Serial.print(F("[LoRaWAN] Waiting for downlink ... "));
-  String strDown;
+  // Retrieve the last uplink frame counter
+  uint32_t fCntUp = node.getFCntUp();
 
-  // you can also retrieve additional information about 
-  // uplink or downlink by passing a reference to
-  // LoRaWANEvent_t structure
-  LoRaWANEvent_t event;
-  state = node.downlink(strDown, &event);
-  if(state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
+  // Send a confirmed uplink every 64th frame
+  // and also request the LinkCheck command
+  if (fCntUp % 64 == 0)
+  {
+    log_i("[LoRaWAN] Requesting LinkCheck");
+    node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
+  }
 
-    // print data of the packet (if there are any)
-    Serial.print(F("[LoRaWAN] Data:\t\t"));
-    if(strDown.length() > 0) {
-      Serial.println(strDown);
-    } else {
-      Serial.println(F("<MAC commands only>"));
+  // Set appStatusUplink flag if required
+  uint8_t appStatusUplinkInterval = appLayer.getAppStatusUplinkInterval();
+  if (appStatusUplinkInterval && (fCntUp % appStatusUplinkInterval == 0))
+  {
+    appStatusUplinkPending = true;
+  }
+
+  // Set lwStatusUplink flag if required
+  if (prefs.lw_stat_interval && (fCntUp % prefs.lw_stat_interval == 0))
+  {
+    lwStatusUplinkPending = true;
+  }
+
+  // get payload immediately before uplink - not used here
+  appLayer.getPayloadStage2(port, encoder);
+
+  uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
+  size_t downlinkSize;                        // To hold the actual payload size rec'd
+  LoRaWANEvent_t uplinkDetails;
+  LoRaWANEvent_t downlinkDetails;
+
+  uint8_t payloadSize = encoder.getLength();
+
+  if (payloadSize > PAYLOAD_SIZE)
+  {
+    log_w("Payload size exceeds maximum of %u bytes - truncating", PAYLOAD_SIZE);
+    payloadSize = PAYLOAD_SIZE;
+  }
+
+  // ----- and now for the main event -----
+  log_i("Sending uplink; port %u, size %u", port, payloadSize);
+
+  // perform an uplink & optionally receive downlink
+  if (fCntUp % 64 == 0)
+  {
+    state = node.sendReceive(
+        uplinkPayload,
+        payloadSize,
+        port,
+        downlinkPayload,
+        &downlinkSize,
+        true,
+        &uplinkDetails,
+        &downlinkDetails);
+  }
+  else
+  {
+    state = node.sendReceive(
+        uplinkPayload,
+        payloadSize,
+        port,
+        downlinkPayload,
+        &downlinkSize,
+        false,
+        nullptr,
+        &downlinkDetails);
+  }
+  debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
+
+  /// Uplink request - command received via downlink
+  uint8_t uplinkReq = 0;
+
+  // Check if downlink was received
+  if (state != RADIOLIB_LORAWAN_NO_DOWNLINK)
+  {
+    // Did we get a downlink with data for us
+    if (downlinkSize > 0)
+    {
+      log_i("Downlink port %u, data: ", downlinkDetails.fPort);
+      arrayDump(downlinkPayload, downlinkSize);
+
+      if (downlinkDetails.fPort > 0)
+      {
+        uplinkReq = decodeDownlink(downlinkDetails.fPort, downlinkPayload, downlinkSize);
+      }
+    }
+    else
+    {
+      log_d("<MAC commands only>");
     }
 
     // print RSSI (Received Signal Strength Indicator)
-    Serial.print(F("[LoRaWAN] RSSI:\t\t"));
-    Serial.print(radio.getRSSI());
-    Serial.println(F(" dBm"));
+    log_d("[LoRaWAN] RSSI:\t\t%f dBm", radio.getRSSI());
 
     // print SNR (Signal-to-Noise Ratio)
-    Serial.print(F("[LoRaWAN] SNR:\t\t"));
-    Serial.print(radio.getSNR());
-    Serial.println(F(" dB"));
+    log_d("[LoRaWAN] SNR:\t\t%f dB", radio.getSNR());
 
     // print frequency error
-    Serial.print(F("[LoRaWAN] Frequency error:\t"));
-    Serial.print(radio.getFrequencyError());
-    Serial.println(F(" Hz"));
+    log_d("[LoRaWAN] Frequency error:\t%f Hz", radio.getFrequencyError());
 
     // print extra information about the event
-    Serial.println(F("[LoRaWAN] Event information:"));
-    Serial.print(F("[LoRaWAN] Direction:\t"));
-    if(event.dir == RADIOLIB_LORAWAN_CHANNEL_DIR_UPLINK) {
-      Serial.println(F("uplink"));
-    } else {
-      Serial.println(F("downlink"));
-    }
-    Serial.print(F("[LoRaWAN] Confirmed:\t"));
-    Serial.println(event.confirmed);
-    Serial.print(F("[LoRaWAN] Confirming:\t"));
-    Serial.println(event.confirming);
-    Serial.print(F("[LoRaWAN] Datarate:\t"));
-    Serial.println(event.datarate);
-    Serial.print(F("[LoRaWAN] Frequency:\t"));
-    Serial.print(event.freq, 3);
-    Serial.println(F(" MHz"));
-    Serial.print(F("[LoRaWAN] Output power:\t"));
-    Serial.print(event.power);
-    Serial.println(F(" dBm"));
-    Serial.print(F("[LoRaWAN] Frame count:\t"));
-    Serial.println(event.fcnt);
-    Serial.print(F("[LoRaWAN] Port:\t\t"));
-    Serial.println(event.port);
-    
-    Serial.print(radio.getFrequencyError());
-
-    uint8_t margin = 0;
-    uint8_t gwCnt = 0;
-    if(node.getMacLinkCheckAns(&margin, &gwCnt)) {
-      Serial.print(F("[LoRaWAN] LinkCheck margin:\t"));
-      Serial.println(margin);
-      Serial.print(F("[LoRaWAN] LinkCheck count:\t"));
-      Serial.println(gwCnt);
-    }
-
-    uint32_t networkTime = 0;
-    uint8_t fracSecond = 0;
-    if(node.getMacDeviceTimeAns(&networkTime, &fracSecond, true)) {
-      Serial.print(F("[LoRaWAN] DeviceTime Unix:\t"));
-      Serial.println(networkTime);
-      Serial.print(F("[LoRaWAN] LinkCheck second:\t1/"));
-      Serial.println(fracSecond);
-    }
-  
-  } else if(state == RADIOLIB_ERR_RX_TIMEOUT) {
-    Serial.println(F("timeout!"));
-  
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
+    log_d("[LoRaWAN] Event information:");
+    log_d("[LoRaWAN] Confirmed:\t%d", downlinkDetails.confirmed);
+    log_d("[LoRaWAN] Confirming:\t%d", downlinkDetails.confirming);
+    log_d("[LoRaWAN] Datarate:\t%d", downlinkDetails.datarate);
+    log_d("[LoRaWAN] Frequency:\t%7.3f MHz", downlinkDetails.freq);
+    log_d("[LoRaWAN] Output power:\t%d dBm", downlinkDetails.power);
+    log_d("[LoRaWAN] Frame count:\t%u", downlinkDetails.fCnt);
+    log_d("[LoRaWAN] fPort:\t\t%u", downlinkDetails.fPort);
   }
 
-  // on EEPROM enabled boards, you can save the current session
-  // by calling "saveSession" which allows retrieving the session after reboot or deepsleep
-  node.saveSession();
+  uint32_t networkTime = 0;
+  uint8_t fracSecond = 0;
+  if (node.getMacDeviceTimeAns(&networkTime, &fracSecond, true) == RADIOLIB_ERR_NONE)
+  {
+    log_i("[LoRaWAN] DeviceTime Unix:\t %ld", networkTime);
+    log_i("[LoRaWAN] DeviceTime second:\t1/%u", fracSecond);
 
-  // wait before sending another packet
-  uint32_t minimumDelay = 60000;                  // try to send once every minute
-  uint32_t interval = node.timeUntilUplink();     // calculate minimum duty cycle delay (per law!)
-	uint32_t delayMs = max(interval, minimumDelay); // cannot send faster than duty cycle allows
+    // Update the system time with the time read from the network
+    rtc.setTime(networkTime);
 
-  delay(delayMs);
+    // Save clock sync timestamp and clear flag
+    rtcLastClockSync = rtc.getLocalEpoch();
+    rtcTimeSource = E_TIME_SOURCE::E_LORA;
+    log_d("RTC sync completed");
+    printDateTime();
+  }
+
+  uint8_t margin = 0;
+  uint8_t gwCnt = 0;
+  if (node.getMacLinkCheckAns(&margin, &gwCnt) == RADIOLIB_ERR_NONE)
+  {
+    log_d("[LoRaWAN] LinkCheck margin:\t%d", margin);
+    log_d("[LoRaWAN] LinkCheck count:\t%u", gwCnt);
+  }
+
+  if (appStatusUplinkPending)
+  {
+    log_i("App status uplink pending");
+  }
+
+  if (lwStatusUplinkPending)
+  {
+    log_i("LoRaWAN node status uplink pending");
+  }
+
+  if (uplinkReq)
+  {
+    sendCfgUplink(uplinkReq, uplinkIntervalSeconds);
+  }
+  else if (lwStatusUplinkPending)
+  {
+    sendCfgUplink(CMD_GET_LW_STATUS, uplinkIntervalSeconds);
+    lwStatusUplinkPending = false;
+  }
+  // else if (appStatusUplinkPending)
+  // {
+  //   sendCfgUplink(CMD_GET_SENSORS_STAT, uplinkIntervalSeconds);
+  //   appStatusUplinkPending = false;
+  // }
+
+  log_d("FcntUp: %u", node.getFCntUp());
+
+  // now save session to RTC memory
+  uint8_t *persist = node.getBufferSession();
+  memcpy(LWsession, persist, RADIOLIB_LORAWAN_SESSION_BUF_SIZE);
+
+  // wait until next uplink - observing legal & TTN Fair Use Policy constraints
+  gotoSleep(sleepDuration(battery_weak));
 }
+
+// The ESP32 wakes from deep-sleep and starts from the very beginning.
+// It then goes back to sleep, so loop() is never called and which is
+// why it is empty.
+
+void loop() {}
