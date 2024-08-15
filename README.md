@@ -5,9 +5,8 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 
 **Work in progress...**
 
-- [ ] Scheduled uplink (2 message types)
-- [ ] Network time sync
+- [X] Scheduled uplink (2 message types)
+- [X] Network time sync
 - [ ] Downlink decoding
 - [ ] Commanded uplink (configuration)
-- [ ] Forced sleep (after timout)
-- [ ] Regular sleep (after uplink)
+
