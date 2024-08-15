@@ -36,6 +36,7 @@
 //
 // 20240723 Extracted from BresserWeatherSensorLW.ino
 // 20240729 Added PowerFeather specific status information
+// 20240815 Added getUplinkDelayMs()
 //
 // ToDo:
 // -
@@ -84,6 +85,14 @@ extern bool longSleep;
 extern time_t rtcLastClockSync;
 extern E_TIME_SOURCE rtcTimeSource;
 
+// Get uplink delay in ms
+uint32_t getUplinkDelayMs(uint32_t uplink_interval)
+{
+  uint32_t interval = node.timeUntilUplink();                 // calculate minimum duty cycle delay (per FUP & law!)
+  uint32_t delayMs = max(interval, uplink_interval * 1000UL); // cannot send faster than duty cycle allows
+
+  return delayMs;
+}
 
 // Decode downlink
 uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
@@ -294,10 +303,8 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
   Serial.println();
 
   // wait before sending uplink
-  uint32_t minimumDelay = uplinkInterval * 1000UL;
-  uint32_t interval = node.timeUntilUplink();     // calculate minimum duty cycle delay (per FUP & law!)
-  uint32_t delayMs = max(interval, minimumDelay); // cannot send faster than duty cycle allows
-
+  uint32_t delayMs = getUplinkDelayMs(uplinkInterval);
+  
   log_d("Sending configuration uplink in %u s", delayMs / 1000);
   delay(delayMs);
   log_d("Sending configuration uplink now.");
