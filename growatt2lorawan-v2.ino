@@ -52,6 +52,7 @@
 //
 // 20240216 Created from matthias-bs/growatt2lorawan
 // 20240814 Initial draft version
+// 20240815 
 //
 //
 // Notes:
@@ -82,6 +83,7 @@
 #include "src/growatt_cfg.h"
 #include "src/growatt2lorawan_cmd.h"
 #include "src/AppLayer.h"
+#include "src/LoadSecrets.h"
 
 //-----------------------------------------------------------------------------
 
@@ -94,9 +96,8 @@ typedef struct
 const Schedule UplinkSchedule[NUM_PORTS] = {
     // {port, mult}
     {1, 1},
-    {2, 2}};
-
-
+    {2, 2}
+};
 
 //-----------------------------------------------------------------------------
 
@@ -115,16 +116,8 @@ const uint8_t PAYLOAD_SIZE = 51;
 /// Uplink payload buffer
 static uint8_t loraData[PAYLOAD_SIZE];
 
-/// Uplink interval
-const uint32_t uplinkPeriodMs = 6 * 60 * 1000;
-
 /// Commanded (by downlink message) uplink request
 uint8_t cmdUplinkReq = 0;
-
-/// Scheduled uplink request
-bool schedUplinkReq[NUM_PORTS];
-
-
 
 /// ESP32 preferences (stored in flash memory)
 Preferences preferences;
@@ -137,8 +130,6 @@ struct sPrefs
   uint16_t sleep_interval_long; //!< preferences: sleep interval long
   uint8_t lw_stat_interval;     //!< preferences: LoRaWAN node status uplink interval
 } prefs;
-
-
 
 // Time zone info
 const char *TZ_INFO = TZINFO_STR;
@@ -487,22 +478,22 @@ void setup()
 #else
   print_wakeup_reason();
 #endif
-  log_i("Boot count: %u", bootCount++);
+  log_i("Boot count: %u", bootCount);
 
   if (bootCount == 1)
   {
     rtcTimeSource = E_TIME_SOURCE::E_UNSYNCHED;
-    appStatusUplinkPending = 0;
-    lwStatusUplinkPending = 0;
+    appStatusUplinkPending = false;
+    lwStatusUplinkPending = false;
   }
+  bootCount++;
 
   // Set time zone
   setenv("TZ", timeZoneInfo.c_str(), 1);
   printDateTime();
 
   // Try to load LoRaWAN secrets from LittleFS file, if available
-  // TODO
-  // loadSecrets(joinEUI, devEUI, nwkKey, appKey);
+  loadSecrets(joinEUI, devEUI, nwkKey, appKey);
 
   // Initialize Application Layer
   appLayer.begin();
@@ -599,146 +590,161 @@ void setup()
     lwStatusUplinkPending = true;
   }
 
-  // get payload immediately before uplink - not used here
-  appLayer.getPayloadStage2(port, encoder);
-
-  uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
-  size_t downlinkSize;                        // To hold the actual payload size rec'd
-  LoRaWANEvent_t uplinkDetails;
-  LoRaWANEvent_t downlinkDetails;
-
-  uint8_t payloadSize = encoder.getLength();
-
-  if (payloadSize > PAYLOAD_SIZE)
-  {
-    log_w("Payload size exceeds maximum of %u bytes - truncating", PAYLOAD_SIZE);
-    payloadSize = PAYLOAD_SIZE;
-  }
-
-  // ----- and now for the main event -----
-  log_i("Sending uplink; port %u, size %u", port, payloadSize);
-
-  // perform an uplink & optionally receive downlink
-  if (fCntUp % 64 == 0)
-  {
-    state = node.sendReceive(
-        uplinkPayload,
-        payloadSize,
-        port,
-        downlinkPayload,
-        &downlinkSize,
-        true,
-        &uplinkDetails,
-        &downlinkDetails);
-  }
-  else
-  {
-    state = node.sendReceive(
-        uplinkPayload,
-        payloadSize,
-        port,
-        downlinkPayload,
-        &downlinkSize,
-        false,
-        nullptr,
-        &downlinkDetails);
-  }
-  debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
-
   /// Uplink request - command received via downlink
   uint8_t uplinkReq = 0;
 
-  // Check if downlink was received
-  if (state != RADIOLIB_LORAWAN_NO_DOWNLINK)
+  for (int i = 0; i < NUM_PORTS; i++)
   {
-    // Did we get a downlink with data for us
-    if (downlinkSize > 0)
-    {
-      log_i("Downlink port %u, data: ", downlinkDetails.fPort);
-      arrayDump(downlinkPayload, downlinkSize);
+    LoraEncoder encoder(uplinkPayload);
 
-      if (downlinkDetails.fPort > 0)
-      {
-        uplinkReq = decodeDownlink(downlinkDetails.fPort, downlinkPayload, downlinkSize);
-      }
+    bool schedUplinkReq = UplinkSchedule[i].mult && (bootCount % UplinkSchedule[i].mult == 0);
+    if (!schedUplinkReq)
+    {
+      continue;
+    }
+    if (i > 0)
+    {
+      delay(getUplinkDelayMs(SLEEP_INTERVAL_MIN));
+    }
+    port = UplinkSchedule[i].port;
+
+    // get payload immediately before uplink
+    appLayer.getPayloadStage2(port, encoder);
+
+    uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
+    size_t downlinkSize;                        // To hold the actual payload size rec'd
+    LoRaWANEvent_t uplinkDetails;
+    LoRaWANEvent_t downlinkDetails;
+
+    uint8_t payloadSize = encoder.getLength();
+
+    if (payloadSize > PAYLOAD_SIZE)
+    {
+      log_w("Payload size exceeds maximum of %u bytes - truncating", PAYLOAD_SIZE);
+      payloadSize = PAYLOAD_SIZE;
+    }
+
+    // ----- and now for the main event -----
+    log_i("Sending uplink; port %u, size %u", port, payloadSize);
+
+    // perform an uplink & optionally receive downlink
+    if (fCntUp % 64 == 0)
+    {
+      state = node.sendReceive(
+          uplinkPayload,
+          payloadSize,
+          port,
+          downlinkPayload,
+          &downlinkSize,
+          true,
+          &uplinkDetails,
+          &downlinkDetails);
     }
     else
     {
-      log_d("<MAC commands only>");
+      state = node.sendReceive(
+          uplinkPayload,
+          payloadSize,
+          port,
+          downlinkPayload,
+          &downlinkSize,
+          false,
+          nullptr,
+          &downlinkDetails);
+    }
+    debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
+
+    // Check if downlink was received
+    if (state != RADIOLIB_LORAWAN_NO_DOWNLINK)
+    {
+      // Did we get a downlink with data for us
+      if (downlinkSize > 0)
+      {
+        log_i("Downlink port %u, data: ", downlinkDetails.fPort);
+        arrayDump(downlinkPayload, downlinkSize);
+
+        if (downlinkDetails.fPort > 0)
+        {
+          uplinkReq = decodeDownlink(downlinkDetails.fPort, downlinkPayload, downlinkSize);
+        }
+      }
+      else
+      {
+        log_d("<MAC commands only>");
+      }
+
+      // print RSSI (Received Signal Strength Indicator)
+      log_d("[LoRaWAN] RSSI:\t\t%f dBm", radio.getRSSI());
+
+      // print SNR (Signal-to-Noise Ratio)
+      log_d("[LoRaWAN] SNR:\t\t%f dB", radio.getSNR());
+
+      // print frequency error
+      log_d("[LoRaWAN] Frequency error:\t%f Hz", radio.getFrequencyError());
+
+      // print extra information about the event
+      log_d("[LoRaWAN] Event information:");
+      log_d("[LoRaWAN] Confirmed:\t%d", downlinkDetails.confirmed);
+      log_d("[LoRaWAN] Confirming:\t%d", downlinkDetails.confirming);
+      log_d("[LoRaWAN] Datarate:\t%d", downlinkDetails.datarate);
+      log_d("[LoRaWAN] Frequency:\t%7.3f MHz", downlinkDetails.freq);
+      log_d("[LoRaWAN] Output power:\t%d dBm", downlinkDetails.power);
+      log_d("[LoRaWAN] Frame count:\t%u", downlinkDetails.fCnt);
+      log_d("[LoRaWAN] fPort:\t\t%u", downlinkDetails.fPort);
     }
 
-    // print RSSI (Received Signal Strength Indicator)
-    log_d("[LoRaWAN] RSSI:\t\t%f dBm", radio.getRSSI());
+    uint32_t networkTime = 0;
+    uint8_t fracSecond = 0;
+    if (node.getMacDeviceTimeAns(&networkTime, &fracSecond, true) == RADIOLIB_ERR_NONE)
+    {
+      log_i("[LoRaWAN] DeviceTime Unix:\t %ld", networkTime);
+      log_i("[LoRaWAN] DeviceTime second:\t1/%u", fracSecond);
 
-    // print SNR (Signal-to-Noise Ratio)
-    log_d("[LoRaWAN] SNR:\t\t%f dB", radio.getSNR());
+      // Update the system time with the time read from the network
+      rtc.setTime(networkTime);
 
-    // print frequency error
-    log_d("[LoRaWAN] Frequency error:\t%f Hz", radio.getFrequencyError());
+      // Save clock sync timestamp and clear flag
+      rtcLastClockSync = rtc.getLocalEpoch();
+      rtcTimeSource = E_TIME_SOURCE::E_LORA;
+      log_d("RTC sync completed");
+      printDateTime();
+    }
 
-    // print extra information about the event
-    log_d("[LoRaWAN] Event information:");
-    log_d("[LoRaWAN] Confirmed:\t%d", downlinkDetails.confirmed);
-    log_d("[LoRaWAN] Confirming:\t%d", downlinkDetails.confirming);
-    log_d("[LoRaWAN] Datarate:\t%d", downlinkDetails.datarate);
-    log_d("[LoRaWAN] Frequency:\t%7.3f MHz", downlinkDetails.freq);
-    log_d("[LoRaWAN] Output power:\t%d dBm", downlinkDetails.power);
-    log_d("[LoRaWAN] Frame count:\t%u", downlinkDetails.fCnt);
-    log_d("[LoRaWAN] fPort:\t\t%u", downlinkDetails.fPort);
+    uint8_t margin = 0;
+    uint8_t gwCnt = 0;
+    if (node.getMacLinkCheckAns(&margin, &gwCnt) == RADIOLIB_ERR_NONE)
+    {
+      log_d("[LoRaWAN] LinkCheck margin:\t%d", margin);
+      log_d("[LoRaWAN] LinkCheck count:\t%u", gwCnt);
+    }
+
+    if (appStatusUplinkPending)
+    {
+      log_i("App status uplink pending");
+    }
+
+    if (lwStatusUplinkPending)
+    {
+      log_i("LoRaWAN node status uplink pending");
+    }
+
+    if (uplinkReq)
+    {
+      sendCfgUplink(uplinkReq, uplinkIntervalSeconds);
+    }
+    else if (lwStatusUplinkPending)
+    {
+      sendCfgUplink(CMD_GET_LW_STATUS, uplinkIntervalSeconds);
+      lwStatusUplinkPending = false;
+    }
+    // else if (appStatusUplinkPending)
+    // {
+    //   sendCfgUplink(CMD_GET_SENSORS_STAT, uplinkIntervalSeconds);
+    //   appStatusUplinkPending = false;
+    // }
+
+    log_d("FcntUp: %u", node.getFCntUp());
   }
-
-  uint32_t networkTime = 0;
-  uint8_t fracSecond = 0;
-  if (node.getMacDeviceTimeAns(&networkTime, &fracSecond, true) == RADIOLIB_ERR_NONE)
-  {
-    log_i("[LoRaWAN] DeviceTime Unix:\t %ld", networkTime);
-    log_i("[LoRaWAN] DeviceTime second:\t1/%u", fracSecond);
-
-    // Update the system time with the time read from the network
-    rtc.setTime(networkTime);
-
-    // Save clock sync timestamp and clear flag
-    rtcLastClockSync = rtc.getLocalEpoch();
-    rtcTimeSource = E_TIME_SOURCE::E_LORA;
-    log_d("RTC sync completed");
-    printDateTime();
-  }
-
-  uint8_t margin = 0;
-  uint8_t gwCnt = 0;
-  if (node.getMacLinkCheckAns(&margin, &gwCnt) == RADIOLIB_ERR_NONE)
-  {
-    log_d("[LoRaWAN] LinkCheck margin:\t%d", margin);
-    log_d("[LoRaWAN] LinkCheck count:\t%u", gwCnt);
-  }
-
-  if (appStatusUplinkPending)
-  {
-    log_i("App status uplink pending");
-  }
-
-  if (lwStatusUplinkPending)
-  {
-    log_i("LoRaWAN node status uplink pending");
-  }
-
-  if (uplinkReq)
-  {
-    sendCfgUplink(uplinkReq, uplinkIntervalSeconds);
-  }
-  else if (lwStatusUplinkPending)
-  {
-    sendCfgUplink(CMD_GET_LW_STATUS, uplinkIntervalSeconds);
-    lwStatusUplinkPending = false;
-  }
-  // else if (appStatusUplinkPending)
-  // {
-  //   sendCfgUplink(CMD_GET_SENSORS_STAT, uplinkIntervalSeconds);
-  //   appStatusUplinkPending = false;
-  // }
-
-  log_d("FcntUp: %u", node.getFCntUp());
-
   // now save session to RTC memory
   uint8_t *persist = node.getBufferSession();
   memcpy(LWsession, persist, RADIOLIB_LORAWAN_SESSION_BUF_SIZE);
