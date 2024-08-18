@@ -281,7 +281,7 @@ function decoder(bytes, port) {
                 'outputpower', 'gridvoltage', 'gridfrequency'
             ]
         );
-    } else {
+    } else if (port === 2) {
         return decode(
             bytes,
             [modbus, rawfloat, rawfloat, rawfloat, temperature, temperature,
@@ -291,10 +291,36 @@ function decoder(bytes, port) {
                 'pv1energytoday', 'pv1energytotal'
             ]
         );
+    } else if (port === CMD_GET_DATETIME) {
+        return decode(
+            port,
+            bytes,
+            [uint32BE, rtc_source
+            ],
+            ['unixtime', 'rtc_source'
+            ]
+        );
+    } else if (port === CMD_GET_LW_CONFIG) {
+        return decode(
+            port,
+            bytes,
+            [uint16BE, uint16BE, uint8
+            ],
+            ['sleep_interval', 'sleep_interval_long', 'lw_status_interval'
+            ]
+        );
+    } else if (port === CMD_GET_LW_STATUS) {
+        return decode(
+            port,
+            bytes,
+            [uint16, uint8
+            ],
+            ['ubatt_mv', 'long_sleep'
+            ]
+        );
     }
 
 }
-
 
 function decodeUplink(input) {
     return {
