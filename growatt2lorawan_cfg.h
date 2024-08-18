@@ -54,11 +54,17 @@
 // Number of uplink ports
 #define NUM_PORTS 2
 
-// Uplink period multipliers
-#define UPLINK_PERIOD_MULTIPLIERS \
-  {                               \
-    1, 5                          \
-  }
+typedef struct
+{
+  int port;
+  int mult;
+} Schedule;
+
+const Schedule UplinkSchedule[NUM_PORTS] = {
+    // {port, mult}
+    {1, 1},
+    {2, 3}
+};
 
 // Maximum downlink payload size (bytes)
 const uint8_t MAX_DOWNLINK_SIZE = 51;
@@ -89,12 +95,9 @@ const uint8_t MAX_DOWNLINK_SIZE = 51;
 // To enable debug mode (debug messages via serial port):
 // Arduino IDE: Tools->Core Debug Level: "Debug|Verbose"
 // or
-// set CORE_DEBUG_LEVEL in BresserWeatherSensorTTNCfg.h
+// set CORE_DEBUG_LEVEL in this file
 #define DEBUG_PORT Serial2
-// #define DEBUG_PRINTF(...) \
-//   {                       \
-//     log_d(__VA_ARGS__);   \
-//   }
+
 
 // Time source & status, see below
 //
