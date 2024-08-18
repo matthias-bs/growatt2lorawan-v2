@@ -43,10 +43,11 @@
 #define _APPLAYER_H
 
 #include <ESP32Time.h>
+#include <LoraMessage.h> // see https://github.com/thesolarnomad/lora-serialization
 //#include <Preferences.h> // keep this to store data persistently
 #include "growatt2lorawan_cmd.h"
 //#include "adc/adc.h" // keep this for using ADC functions
-#include <LoraMessage.h> // see https://github.com/thesolarnomad/lora-serialization
+
 
 /*!
  * \brief LoRaWAN node application layer
