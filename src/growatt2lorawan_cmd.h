@@ -108,6 +108,17 @@
 
 // Uplink: n.a.
 
+// CMD_SET_LW_STATUS_INTERVAL
+// ---------------------------
+// Note: Set LoRaWAN status interval in frame counts
+// Port: CMD_SET_LW_STATUS_INTERVAL
+#define CMD_SET_LW_STATUS_INTERVAL 0x35
+
+// Downlink (command):
+// byte0: lw_status_interval[7:0]
+
+// Uplink: n.a.
+
 // CMD_GET_LW_CONFIG
 // ------------------
 // Port: CMD_GET_LW_CONFIG
@@ -121,6 +132,7 @@
 // byte1: sleep_interval[ 7:0]
 // byte2: sleep_interval_long[15:8]
 // byte3: sleep_interval_long[ 7:0]
+// byte4: lw_status_interval[ 7:0]
 
 // CMD_GET_LW_STATUS
 // ------------------
