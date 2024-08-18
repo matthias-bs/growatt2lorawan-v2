@@ -78,6 +78,8 @@
 // include the library
 #include <RadioLib.h>
 #include <Preferences.h>
+#include <ESP32Time.h>
+#include <LoraMessage.h>
 #include "config.h"
 #include "growatt2lorawan_cfg.h"
 #include "src/growatt_cfg.h"
@@ -85,26 +87,6 @@
 #include "src/AppLayer.h"
 #include "src/LoadSecrets.h"
 
-//-----------------------------------------------------------------------------
-
-typedef struct
-{
-  int port;
-  int mult;
-} Schedule;
-
-const Schedule UplinkSchedule[NUM_PORTS] = {
-    // {port, mult}
-    {1, 1},
-    {2, 2}
-};
-
-//-----------------------------------------------------------------------------
-
-#include <ESP32Time.h>
-
-// LoRa_Serialization
-#include <LoraMessage.h>
 
 /// Modbus interface select: 0 - USB / 1 - RS485
 bool modbusRS485;
@@ -731,6 +713,7 @@ void setup()
     if (uplinkReq)
     {
       sendCfgUplink(uplinkReq, uplinkIntervalSeconds);
+      uplinkReq = 0;
     }
     else if (lwStatusUplinkPending)
     {
