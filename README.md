@@ -64,7 +64,7 @@ But: Some ESP32 boards have an integrated LiPo battery charger. You could power 
 
 ## Pinning Configuration
 
-See [src/settings.h](src/growatt_cfg.h)
+See [src/growatt_cfg.h](src/growatt_cfg.h)
 
 | GPIO define | Description |
 | ----------- | ----------- |
