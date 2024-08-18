@@ -37,6 +37,7 @@
 // 20240723 Extracted from BresserWeatherSensorLW.ino
 // 20240729 Added PowerFeather specific status information
 // 20240815 Added getUplinkDelayMs()
+// 20240818 Replaced delay() with light sleep for ESP32
 //
 // ToDo:
 // -
@@ -49,11 +50,10 @@
 #include <ESP32Time.h>
 #include "src/AppLayer.h"
 
-
 /*
  * From config.h
  */
-void debug(bool isFail, const char* message, int state, bool Freeze);
+void debug(bool isFail, const char *message, int state, bool Freeze);
 extern LoRaWANNode node;
 extern const uint16_t uplinkIntervalSeconds;
 
@@ -159,7 +159,6 @@ uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
   return appLayer.decodeDownlink(port, payload, size);
 }
 
-
 // Send configuration uplink
 void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
 {
@@ -199,7 +198,7 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
     log_d("Device Status: U_batt=%u mV, longSleep=%u", getBatteryVoltage(), status);
     encoder.writeUint16(getBatteryVoltage());
     encoder.writeUint8(status);
-    #if defined(ARDUINO_ESP32S3_POWERFEATHER)
+#if defined(ARDUINO_ESP32S3_POWERFEATHER)
     Result res;
     uint16_t voltage;
     int16_t current;
@@ -218,7 +217,7 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
     {
       encoder.writeUint16(INV_UINT16);
     }
-    
+
     res = Board.getSupplyCurrent(current);
     if (res == Result::Ok)
     {
@@ -288,7 +287,7 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
     {
       encoder.writeTemperature(INV_TEMP);
     }
-    #endif
+#endif
   }
   else
   {
@@ -304,9 +303,14 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
 
   // wait before sending uplink
   uint32_t delayMs = getUplinkDelayMs(uplinkInterval);
-  
+
   log_d("Sending configuration uplink in %u s", delayMs / 1000);
+#if defined(ESP32)
+  esp_sleep_enable_timer_wakeup(delayMs * 1000);
+  esp_light_sleep_start();
+#else
   delay(delayMs);
+#endif
   log_d("Sending configuration uplink now.");
   int16_t state = node.sendReceive(uplinkPayload, encoder.getLength(), port);
   debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
