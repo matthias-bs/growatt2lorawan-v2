@@ -25,7 +25,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [Modbus Interface Select Input](#modbus-interface-select-input)
 * [Power Supply](#power-supply)
 * [Library Dependencies](#library-dependencies)
-* [Pinning Configuration](#pinning configuration)
+* [Pinning Configuration](#pinning-configuration)
   * [Modbus Interface Selection](#modbus-interface-selection)
   * [Modbus via RS485 Interface](#modbus-via-rs485-interface)
   * [Debug Interface in case of using Modbus via USB Interface (optional)]()
