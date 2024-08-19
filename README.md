@@ -28,7 +28,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 * [Pinning Configuration](#pinning-configuration)
   * [Modbus Interface Selection](#modbus-interface-selection)
   * [Modbus via RS485 Interface](#modbus-via-rs485-interface)
-  * [Debug Interface in case of using Modbus via USB Interface (optional)]()
+  * [Debug Interface in case of using Modbus via USB Interface (optional)](#debug-interface-in-case-of-using-modbus-via-usb-interface-optional)
 * [LoRaWAN Network Service Configuration](#lorawan-network-service-configuration)
 * [Software Build Configuration](#software-build-configuration)
 * [LoRaWAN Payload Formatters](#lorawan-payload-formatters)
