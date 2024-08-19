@@ -24,12 +24,12 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 * [Inverter Modbus Interface Options](#inverter-modbus-interface-options)
   * [Modbus Interface Select Input](#modbus-interface-select-input)
 * [Power Supply](#power-supply)
-* [Library Dependencies](#library-dependencies)
 * [Pinning Configuration](#pinning-configuration)
   * [Modbus Interface Selection](#modbus-interface-selection)
   * [Modbus via RS485 Interface](#modbus-via-rs485-interface)
   * [Debug Interface in case of using Modbus via USB Interface (optional)](#debug-interface-in-case-of-using-modbus-via-usb-interface-optional)
 * [LoRaWAN Network Service Configuration](#lorawan-network-service-configuration)
+* [Library Dependencies](#library-dependencies)
 * [Software Build Configuration](#software-build-configuration)
 * [LoRaWAN Payload Formatters](#lorawan-payload-formatters)
   * [The Things Network Payload Formatters Setup](#the-things-network-payload-formatters-setup)
@@ -72,13 +72,6 @@ The ESP32 development board can be powered from the inverter's USB port **which 
 
 But: Some ESP32 boards have an integrated LiPo battery charger. You could power the board from a battery while there is no PV power (at least for a few hours). 
 
-## Library Dependencies
-
-* [RadioLib](https://github.com/jgromes/RadioLib) by Jan Gromeš  
-* [Lora-Serialization](https://github.com/thesolarnomad/lora-serialization) by Joscha Feth
-* [ESP32Time](https://github.com/fbiego/ESP32Time) by Felix Biego
-* [ModbusMaster](https://github.com/4-20ma/ModbusMaster) by Doc Walker
-
 ## Pinning Configuration
 
 See [src/growatt_cfg.h](src/growatt_cfg.h)
@@ -119,6 +112,13 @@ Create an account and set up a device configuration in your LoRaWAN network prov
 > [!IMPORTANT]
 > Check the maximum permitted payload size and uplink/downlink rate according to your regional parameters and change the configuration if required!
 > See [Airtime calculator for LoRaWAN](https://avbentem.github.io/airtime-calculator/ttn/eu868).
+
+## Library Dependencies
+
+* [RadioLib](https://github.com/jgromes/RadioLib) by Jan Gromeš  
+* [Lora-Serialization](https://github.com/thesolarnomad/lora-serialization) by Joscha Feth
+* [ESP32Time](https://github.com/fbiego/ESP32Time) by Felix Biego
+* [ModbusMaster](https://github.com/4-20ma/ModbusMaster) by Doc Walker
 
 ## Software Build Configuration
 
