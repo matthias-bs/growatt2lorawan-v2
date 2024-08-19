@@ -38,7 +38,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 * [Remote Configuration Commands / Status Requests via LoRaWAN](#remote-configuration-commands--status-requests-via-lorawan)
   * [Parameters](#parameters)
   * [Using Raw Data](#using-raw-data)
-  * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink-downlink-formatters)
+  * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink--downlink-formatters)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
