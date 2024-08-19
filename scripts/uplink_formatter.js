@@ -72,7 +72,9 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 function decoder(bytes, port) {
-    // bytes is of type Buffer
+    const CMD_GET_DATETIME = 0x20;
+    const CMD_GET_LW_CONFIG = 0x36;
+    const CMD_GET_LW_STATUS = 0x38;
 
     // see https://github.com/4-20ma/ModbusMaster/blob/master/src/ModbusMaster.h
     var modbus_code = {
@@ -91,6 +93,15 @@ function decoder(bytes, port) {
         var i = 0;
         for (var x = 0; x < bytes.length; x++) {
             i |= +(bytes[x] << (x * 8));
+        }
+        return i;
+    };
+
+    // Big Endian
+    var bytesToIntBE = function (bytes) {
+        let i = 0;
+        for (var x = 0; x < bytes.length; x++) {
+            i |= +(bytes[x] << ((bytes.length - 1 - x) * 8));
         }
         return i;
     };
@@ -146,6 +157,22 @@ function decoder(bytes, port) {
         return bytesToInt(bytes);
     };
     uint32.BYTES = 4;
+
+    var uint16BE = function (bytes) {
+        if (bytes.length !== uint16BE.BYTES) {
+            throw new Error('int must have exactly 2 bytes');
+        }
+        return bytesToIntBE(bytes);
+    };
+    uint16BE.BYTES = 2;
+
+    var uint32BE = function (bytes) {
+        if (bytes.length !== uint32BE.BYTES) {
+            throw new Error('int must have exactly 4 bytes');
+        }
+        return bytesToIntBE(bytes);
+    };
+    uint32BE.BYTES = 4;
 
     var latLng = function (bytes) {
         if (bytes.length !== latLng.BYTES) {
@@ -255,6 +282,8 @@ function decoder(bytes, port) {
             uint8: uint8,
             uint16: uint16,
             uint32: uint32,
+            uint16BE: uint16BE,
+            uint32BE: uint32BE,
             temperature: temperature,
             humidity: humidity,
             latLng: latLng,
@@ -293,7 +322,6 @@ function decoder(bytes, port) {
         );
     } else if (port === CMD_GET_DATETIME) {
         return decode(
-            port,
             bytes,
             [uint32BE, rtc_source
             ],
@@ -302,7 +330,6 @@ function decoder(bytes, port) {
         );
     } else if (port === CMD_GET_LW_CONFIG) {
         return decode(
-            port,
             bytes,
             [uint16BE, uint16BE, uint8
             ],
@@ -311,7 +338,6 @@ function decoder(bytes, port) {
         );
     } else if (port === CMD_GET_LW_STATUS) {
         return decode(
-            port,
             bytes,
             [uint16, uint8
             ],
