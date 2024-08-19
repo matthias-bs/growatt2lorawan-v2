@@ -19,6 +19,23 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 - [ ] Downlink decoding
 - [ ] Commanded uplink (configuration)
 
+## Contents
+* [Hardware Requirements](#hardware-requirements)
+* [Inverter Modbus Interface Options](#inverter-modbus-interface-options)
+  * [Modbus Interface Select Input](#modbus-interface-select-input)
+* [Power Supply](#power-supply)
+* [Library Dependencies](#library-dependencies)
+* [Pinning Configuration](#pinning configuration)
+  * [Modbus Interface Selection](#modbus-interface-selection)
+  * [Modbus via RS485 Interface](#modbus-via-rs485-interface)
+  * [Debug Interface in case of using Modbus via USB Interface (optional)]()
+* [LoRaWAN Network Service Configuration](#lorawan-network-service-configuration)
+* [Software Build Configuration](#software-build-configuration)
+* [LoRaWAN Payload Formatters](#lorawan-payload-formatters)
+  * [The Things Network Payload Formatters Setup](#the-things-network-payload-formatters-setup)
+* [MQTT Integration and IoT MQTT Panel Example](#mqtt-integration-and-iot-mqtt-panel-example)
+  * [Set up *IoT MQTT Panel* from configuration file](#set-up-iot-mqtt-panel-from-configuration-file)
+
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
 * SX1276 or SX1262 (or compatible) LoRaWAN Radio Transceiver
@@ -66,11 +83,14 @@ But: Some ESP32 boards have an integrated LiPo battery charger. You could power 
 
 See [src/growatt_cfg.h](src/growatt_cfg.h)
 
+### Modbus Interface Selection
+
 | GPIO define | Description |
 | ----------- | ----------- |
 | INTERFACE_SEL | Modbus Interface Selection (USB/RS485) |
 
-### Modbus via RS485 Interface Only:
+### Modbus via RS485 Interface
+
 | GPIO define   | Waveshare 4777 pin  |
 | ------------- | ------------------- |
 | MAX485_DE     | RSE                 |
@@ -78,7 +98,7 @@ See [src/growatt_cfg.h](src/growatt_cfg.h)
 | MAX485_RX     | RO                  |
 | MAX485_TX     | DI                  |
 
-### Debug Interface in case of using Modbus via USB Interface (optional):
+### Debug Interface in case of using Modbus via USB Interface (optional)
 
 USB-to-TTL converter, e.g. [AZ Delivery HW-598](https://www.az-delivery.de/en/products/hw-598-usb-auf-seriell-adapter-mit-cp2102-chip-und-kabel)
 
@@ -87,7 +107,7 @@ USB-to-TTL converter, e.g. [AZ Delivery HW-598](https://www.az-delivery.de/en/pr
 | DEBUG_TX    | RXD                  |
 | DEBUG_RX    | TXD / n.c.           |
 
-### LoRaWAN Network Service Configuration
+## LoRaWAN Network Service Configuration
 
 Create an account and set up a device configuration in your LoRaWAN network provider's web console, e.g. [The Things Network](https://www.thethingsnetwork.org/).
 
@@ -101,8 +121,6 @@ Create an account and set up a device configuration in your LoRaWAN network prov
 > See [Airtime calculator for LoRaWAN](https://avbentem.github.io/airtime-calculator/ttn/eu868).
 
 ## Software Build Configuration
-
-### Required Configuration
 
 * Install the Arduino ESP32 board package in the Arduino IDE
 * Select your ESP32 board
