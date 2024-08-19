@@ -87,6 +87,45 @@ USB-to-TTL converter, e.g. [AZ Delivery HW-598](https://www.az-delivery.de/en/pr
 | DEBUG_TX    | RXD                  |
 | DEBUG_RX    | TXD / n.c.           |
 
+### LoRaWAN Network Service Configuration
+
+Create an account and set up a device configuration in your LoRaWAN network provider's web console, e.g. [The Things Network](https://www.thethingsnetwork.org/).
+
+* LoRaWAN v1.1
+* Regional Parameters 1.1 Revision A
+* Device class A
+* Over the air activation (OTAA)
+
+> [!IMPORTANT]
+> Check the maximum permitted payload size and uplink/downlink rate according to your regional parameters and change the configuration if required!
+> See [Airtime calculator for LoRaWAN](https://avbentem.github.io/airtime-calculator/ttn/eu868).
+
+## Software Build Configuration
+
+### Required Configuration
+
+* Install the Arduino ESP32 board package in the Arduino IDE
+* Select your ESP32 board
+* Install all libraries as listed in [package.json](package.json) &mdash; section 'dependencies' &mdash; via the Arduino IDE Library Manager 
+* Clone (or download and unpack) the latest ([growatt2lorawan-v2 release](https://github.com/matthias-bs/growatt2lorawan-v2/releases))
+* Set your LoRaWAN Network Service credentials &mdash; `RADIOLIB_LORAWAN_DEV_EUI`, `RADIOLIB_LORAWAN_NWK_KEY` and `RADIOLIB_LORAWAN_APP_KEY` &mdash; in [secrets.h](secrets.h):
+
+```
+// The Device EUI & two keys can be generated on the TTN console
+
+// Replace with your Device EUI
+#define RADIOLIB_LORAWAN_DEV_EUI   0x---------------
+
+// Replace with your App Key
+#define RADIOLIB_LORAWAN_APP_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--
+
+// Put your Nwk Key here
+#define RADIOLIB_LORAWAN_NWK_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--
+```
+
+* Load the sketch [growatt2lorawan-v2.ino](growatt2lorawan-v2.ino)
+* Compile and Upload
+
 ## MQTT Integration and IoT MQTT Panel Example
 
 Arduino App: [IoT MQTT Panel](https://snrlab.in/iot/iot-mqtt-panel-user-guide)
