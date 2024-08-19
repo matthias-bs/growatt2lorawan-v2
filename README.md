@@ -35,7 +35,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [The Things Network Payload Formatters Setup](#the-things-network-payload-formatters-setup)
 * [MQTT Integration and IoT MQTT Panel Example](#mqtt-integration-and-iot-mqtt-panel-example)
   * [Set up *IoT MQTT Panel* from configuration file](#set-up-iot-mqtt-panel-from-configuration-file)
-* [Remote Configuration Commands / Status Requests via LoRaWAN](#remote-configuration-commands-status-requests-via-lorawan)
+* [Remote Configuration Commands / Status Requests via LoRaWAN](#remote-configuration-commands--status-requests-via-lorawan)
   * [Parameters](#parameters)
   * [Using Raw Data](#using-raw-data)
   * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink-downlink-formatters)
