@@ -35,6 +35,10 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [The Things Network Payload Formatters Setup](#the-things-network-payload-formatters-setup)
 * [MQTT Integration and IoT MQTT Panel Example](#mqtt-integration-and-iot-mqtt-panel-example)
   * [Set up *IoT MQTT Panel* from configuration file](#set-up-iot-mqtt-panel-from-configuration-file)
+* [Remote Configuration Commands / Status Requests via LoRaWAN](#remote-configuration-commands-status-requests-via-lorawan)
+  * [Parameters](#parameters)
+  * [Using Raw Data](#using-raw-data)
+  * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink-downlink-formatters)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
@@ -192,3 +196,54 @@ Change *USERNAME* and *PASSWORD* as needed:
 "username":"USERNAME","password":"PASSWORD"
 [...]
 ```
+
+## Remote Configuration Commands / Status Requests via LoRaWAN
+
+Many software parameters can be defined at compile time, i.e. in [BresserWeatherSensorLWCfg.h](BresserWeatherSensorLWCfg.h). A few [parameters](#parameters) can also be changed and queried at run time via LoRaWAN, either [using raw data](#using-raw-data) or [using Javascript Uplink/Downlink Formatters](#using-the-javascript-uplinkdownlink-formatters).
+
+### Parameters
+
+| Parameter             | Description                                                                 |
+| --------------------- | --------------------------------------------------------------------------- |
+| <sleep_interval>      | Sleep interval (regular) in seconds; 0...65535                              |
+| <sleep_interval_long> | Sleep interval (energy saving mode) in seconds; 0...65535                   |
+| <lw_status_interval>  | LoRaWAN node status message uplink interval in no. of uplink frames; 0...255; 0: disabled |
+| <ubatt_mv>            | Battery voltage in mV                                                       |
+| <long_sleep>          | 0: regular sleep interval / 1: long sleep interval (depending on U_batt)    |
+| \<epoch\>             | Unix epoch time, see https://www.epochconverter.com/ ( \<integer\> / "0x....") |
+
+> [!WARNING]
+> Confirmed downlinks should not be used! (see [here](https://www.thethingsnetwork.org/forum/t/how-to-purge-a-scheduled-confirmed-downlink/56849/7) for an explanation.)
+
+#### Default Parameter Values
+
+* Sleep interval (long): `SLEEP_INTERVAL`, `SLEEP_INTERVAL_LONG`; see [growatt2lorawan_cfg.h](https://github.com/matthias-bs/growatt2lorawan-v2/blob/a57d3a8747d7e91b6233f2a8d9a8ed0eed96852e/growatt2lorawan_cfg.h#L76-L79)
+* `LW_STATUS_INTERVAL`: see [growatt2lorawan_cfg.h](https://github.com/matthias-bs/growatt2lorawan-v2/blob/a57d3a8747d7e91b6233f2a8d9a8ed0eed96852e/growatt2lorawan_cfg.h#L82)
+
+### Using Raw Data
+
+| Command                       | Port       | Downlink                                                                  | Uplink         |
+| ----------------------------- | ---------- | ------------------------------------------------------------------------- | -------------- |
+| CMD_GET_DATETIME              | 0x20  (32) | 0x00                                                                      | epoch[31:24]<br>epoch[23:16]<br>epoch[15:8]<br>epoch[7:0]<br>rtc_source[7:0] |
+| CMD_SET_DATETIME              | 0x21  (33) | epoch[31:24]<br>epoch[23:16]<br>epoch[15:8]<br>epoch[7:0]                 | n.a.           |
+| CMD_SET_SLEEP_INTERVAL        | 0x31  (49) | sleep_interval[15:8]<br>sleep_interval[7:0]                               | n.a.           |
+| CMD_SET_SLEEP_INTERVAL_LONG   | 0x33  (51) | sleep_interval_long[15:8]<br>sleep_interval_long[7:0]                     | n.a.           |
+| CMD_SET_LW_STATUS_INTERVAL    | 0x35  (53) | lw_status_interval[7:0]                                                   | n.a.           |
+| CMD_GET_LW_CONFIG             | 0x36  (54) | 0x00                                                                      | sleep_interval[15:8]<br>sleep_interval[7:0]<br>sleep_interval_long[15:8]<br>sleep_interval_long[7:0] |
+| CMD_GET_LW_STATUS             | 0x38 (56) | 0x00                                                                       | ubatt_mv[15:8]<br>ubatt_mv[7:0]<br>long_sleep[7:0] |
+
+### Using the Javascript Uplink/Downlink Formatters
+
+> [!NOTE]
+> The command (`"cmd": ...`) may be omitted if it can be derived from the given parameters.
+
+| Command                       | Downlink                                                                  | Uplink                       |
+| ----------------------------- | ------------------------------------------------------------------------- | ---------------------------- |
+| CMD_GET_DATETIME              | {"cmd": "CMD_GET_DATETIME"}                                               | {"epoch": \<epoch\>}         |
+| CMD_SET_DATETIME              | {"epoch": \<epoch\>}                                                      | n.a.                         |
+| CMD_SET_SLEEP_INTERVAL        | {"sleep_interval": <sleep_interval>}                                      | n.a.                         |
+| CMD_SET_SLEEP_INTERVAL_LONG   | {"sleep_interval_long": <sleep_interval_long>}                            | n.a.                         |
+| CMD_SET_LW_STATUS_INTERVAL    | {"lw_status_interval": <lw_status_interval>}                              | n.a.                         |
+| CMD_GET_LW_CONFIG             | {"cmd": "CMD_GET_LW_CONFIG"}                                              | {"sleep_interval": <sleep_interval>, "sleep_interval_long": <sleep_interval_long>, "lw_status_interval": <lw_status_interval>} |
+| CMD_GET_LW_STATUS             | {"cmd": "CMD_GET_LW_STATUS"}                                              | {"ubatt_mv": <ubatt_mv>, "long_sleep": <long_sleep>} |
+
