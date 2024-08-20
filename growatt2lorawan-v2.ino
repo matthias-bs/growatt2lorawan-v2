@@ -52,7 +52,7 @@
 //
 // 20240216 Created from matthias-bs/growatt2lorawan
 // 20240814 Initial draft version
-// 20240815 
+// 20240820 Fixed sleep time calculation
 //
 //
 // Notes:
@@ -86,7 +86,6 @@
 #include "src/growatt2lorawan_cmd.h"
 #include "src/AppLayer.h"
 #include "src/LoadSecrets.h"
-
 
 /// Modbus interface select: 0 - USB / 1 - RS485
 bool modbusRS485;
@@ -224,7 +223,12 @@ uint32_t sleepDuration(uint16_t battery_weak)
     time_t t_now = rtc.getLocalEpoch();
     localtime_r(&t_now, &timeinfo);
 
-    sleep_interval = sleep_interval - ((timeinfo.tm_min * 60) % sleep_interval + timeinfo.tm_sec);
+    uint32_t diff = (timeinfo.tm_min * 60) % sleep_interval + timeinfo.tm_sec;
+    if (diff > sleep_interval)
+    {
+      diff -= sleep_interval;
+    }
+    sleep_interval = sleep_interval - diff;
   }
 
   sleep_interval = max(sleep_interval, static_cast<uint32_t>(SLEEP_INTERVAL_MIN));
@@ -241,8 +245,8 @@ uint32_t sleepDuration(uint16_t battery_weak)
  */
 void gotoSleep(uint32_t seconds)
 {
-  esp_sleep_enable_timer_wakeup(seconds * 1000UL * 1000UL); // function uses uS
   log_i("Sleeping for %lu s", seconds);
+  esp_sleep_enable_timer_wakeup(seconds * 1000UL * 1000UL); // function uses uS
   Serial.flush();
 
   esp_deep_sleep_start();
