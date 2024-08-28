@@ -431,13 +431,6 @@ void setup()
   setenv("TZ", TZ_INFO, 1);
   printDateTime();
 
-  // // Check if clock was never synchronized or sync interval has expired
-  // if ((rtcLastClockSync == 0) || ((rtc.getLocalEpoch() - rtcLastClockSync) > (CLOCK_SYNC_INTERVAL * 60)))
-  // {
-  //   log_d("RTC sync required");
-  //   rtcSyncReq = true;
-  // }
-
 #if defined(ARDUINO_ARCH_RP2040)
   // see pico-sdk/src/rp2_common/hardware_rtc/rtc.c
   rtc_init();
