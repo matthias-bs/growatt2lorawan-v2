@@ -229,7 +229,7 @@ Many software parameters can be defined at compile time, i.e. in [BresserWeather
 | CMD_SET_SLEEP_INTERVAL        | 0x31  (49) | sleep_interval[15:8]<br>sleep_interval[7:0]                               | n.a.           |
 | CMD_SET_SLEEP_INTERVAL_LONG   | 0x33  (51) | sleep_interval_long[15:8]<br>sleep_interval_long[7:0]                     | n.a.           |
 | CMD_SET_LW_STATUS_INTERVAL    | 0x35  (53) | lw_status_interval[7:0]                                                   | n.a.           |
-| CMD_GET_LW_CONFIG             | 0x36  (54) | 0x00                                                                      | sleep_interval[15:8]<br>sleep_interval[7:0]<br>sleep_interval_long[15:8]<br>sleep_interval_long[7:0] |
+| CMD_GET_LW_CONFIG             | 0x36  (54) | 0x00                                                                      | sleep_interval[15:8]<br>sleep_interval[7:0]<br>sleep_interval_long[15:8]<br>sleep_interval_long[7:0]<br>lw_status_interval[7:0] |
 | CMD_GET_LW_STATUS             | 0x38 (56) | 0x00                                                                       | ubatt_mv[15:8]<br>ubatt_mv[7:0]<br>long_sleep[7:0] |
 
 ### Using the Javascript Uplink/Downlink Formatters
