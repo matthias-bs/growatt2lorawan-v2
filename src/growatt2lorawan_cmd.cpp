@@ -38,6 +38,8 @@
 // 20240729 Added PowerFeather specific status information
 // 20240815 Added getUplinkDelayMs()
 // 20240818 Replaced delay() with light sleep for ESP32
+// 20240828 Renamed Preferences: BWS-LW to GRO2LW
+//          Added implementation of CMD_SET_LW_STATUS_INTERVAL
 //
 // ToDo:
 // -
@@ -127,7 +129,7 @@ uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
   {
     prefs.sleep_interval = (payload[0] << 8) | payload[1];
     log_d("Set sleep_interval: %u s", prefs.sleep_interval);
-    preferences.begin("BWS-LW", false);
+    preferences.begin("GRO2LW", false);
     preferences.putUShort("sleep_int", prefs.sleep_interval);
     preferences.end();
     return 0;
@@ -137,8 +139,18 @@ uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
   {
     prefs.sleep_interval_long = (payload[0] << 8) | payload[1];
     log_d("Set sleep_interval_long: %u s", prefs.sleep_interval_long);
-    preferences.begin("BWS-LW", false);
+    preferences.begin("GRO2LW", false);
     preferences.putUShort("sleep_int_long", prefs.sleep_interval_long);
+    preferences.end();
+    return 0;
+  }
+
+  if ((port == CMD_SET_LW_STATUS_INTERVAL) && (size == 1))
+  {
+    prefs.lw_stat_interval = payload[0];
+    log_d("Set lw_stat_interval: %u", prefs.lw_stat_interval);
+    preferences.begin("GRO2LW", false);
+    preferences.putUChar("lw_stat_int", prefs.lw_stat_interval);
     preferences.end();
     return 0;
   }
