@@ -16,8 +16,8 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 
 - [X] Scheduled uplink (2 message types)
 - [X] Network time sync
-- [ ] Downlink decoding
-- [ ] Commanded uplink (configuration)
+- [X] Downlink decoding
+- [X] Commanded uplink (configuration)
 
 ## Contents
 * [Hardware Requirements](#hardware-requirements)
