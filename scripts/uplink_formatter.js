@@ -65,6 +65,7 @@
 //
 // History:
 // 20240818 Copied from growatt2lorawan
+// 20240828 Added decoding of RTC source
 //
 // ToDo:
 // -  
@@ -75,6 +76,14 @@ function decoder(bytes, port) {
     const CMD_GET_DATETIME = 0x20;
     const CMD_GET_LW_CONFIG = 0x36;
     const CMD_GET_LW_STATUS = 0x38;
+
+    const rtc_source_code = {
+        0x00: "GPS",
+        0x01: "RTC",
+        0x02: "LORA",
+        0x03: "unsynched",
+        0x04: "set (source unknown)"
+    };
 
     // see https://github.com/4-20ma/ModbusMaster/blob/master/src/ModbusMaster.h
     var modbus_code = {
@@ -88,6 +97,14 @@ function decoder(bytes, port) {
         0xE2: "ResponseTimedOut",
         0xE3: "InvalidCRC"
     };
+
+    var rtc_source = function (bytes) {
+        if (bytes.length !== rtc_source.BYTES) {
+            throw new Error('rtc_source must have exactly 1 byte');
+        }
+        return rtc_source_code[bytes[0]];
+    };
+    rtc_source.BYTES = 1;
 
     var bytesToInt = function (bytes) {
         var i = 0;
@@ -291,7 +308,8 @@ function decoder(bytes, port) {
             rawfloat: rawfloat,
             uint16fp1: uint16fp1,
             modbus: modbus,
-            decode: decode
+            decode: decode,
+            rtc_source: rtc_source
         };
     }
 
