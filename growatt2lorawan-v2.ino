@@ -53,6 +53,7 @@
 // 20240216 Created from matthias-bs/growatt2lorawan
 // 20240814 Initial draft version
 // 20240820 Fixed sleep time calculation
+// 20240828 Renamed Preferences: BWS-LW to GRO2LW
 //
 //
 // Notes:
@@ -477,7 +478,7 @@ void setup()
   // Initialize Application Layer
   appLayer.begin();
 
-  preferences.begin("BWS-LW", false);
+  preferences.begin("GRO2LW", false);
   prefs.sleep_interval = preferences.getUShort("sleep_int", SLEEP_INTERVAL);
   log_d("Preferences: sleep_interval:        %u s", prefs.sleep_interval);
   prefs.sleep_interval_long = preferences.getUShort("sleep_int_long", SLEEP_INTERVAL_LONG);
