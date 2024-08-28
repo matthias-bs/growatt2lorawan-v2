@@ -39,6 +39,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [Parameters](#parameters)
   * [Using Raw Data](#using-raw-data)
   * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink--downlink-formatters)
+* [Loading LoRaWAN Network Service Credentials from File](#loading-lorawan-network-service-credentials-from-file)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
@@ -247,3 +248,15 @@ Many software parameters can be defined at compile time, i.e. in [BresserWeather
 | CMD_GET_LW_CONFIG             | {"cmd": "CMD_GET_LW_CONFIG"}                                              | {"sleep_interval": <sleep_interval>, "sleep_interval_long": <sleep_interval_long>, "lw_status_interval": <lw_status_interval>} |
 | CMD_GET_LW_STATUS             | {"cmd": "CMD_GET_LW_STATUS"}                                              | {"ubatt_mv": <ubatt_mv>, "long_sleep": <long_sleep>} |
 
+## Loading LoRaWAN Network Service Credentials from File
+
+> [!NOTE]
+> To simplify deployment of a larger number of devices, LoRaWAN credentials can be read from a JSON file. This allows to use the same source code and binary file for a fleet of devices.
+
+
+If a valid file `secrets.json` exists on LittleFS, the settings defined at compile time (in `secrets.h`) are overridden.
+
+Modify the example [data/secrets.json](data/secrets.json) as required and install it to the board's Flash memory using [earlephilhower/arduino-littlefs-upload](https://github.com/earlephilhower/arduino-littlefs-upload).
+
+> [!WARNING]
+> Only very basic validation of the file `secrets.json` is implemented &mdash; check the debug output.
