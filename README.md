@@ -12,12 +12,11 @@ Otherwise, the original Growatt ShineWiFi-S (serial) / ShineWiFi-X (USB), the cu
 
 This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/growatt2lorawan) using [RadioLib](https://github.com/jgromes/RadioLib).
 
-:construction_worker: **Work in Progress!** :construction_worker: 
-
 - [X] Scheduled uplink (2 message types)
 - [X] Network time sync
 - [X] Downlink decoding
 - [X] Commanded uplink (configuration)
+- [ ] Battery voltage reading
 
 ## Contents
 * [Hardware Requirements](#hardware-requirements)
