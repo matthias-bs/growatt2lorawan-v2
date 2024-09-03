@@ -39,6 +39,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [Using Raw Data](#using-raw-data)
   * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink--downlink-formatters)
 * [Loading LoRaWAN Network Service Credentials from File](#loading-lorawan-network-service-credentials-from-file)
+* [Datacake Integration](#datacake-integration)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
@@ -259,3 +260,7 @@ Modify the example [data/secrets.json](data/secrets.json) as required and instal
 
 > [!WARNING]
 > Only very basic validation of the file `secrets.json` is implemented &mdash; check the debug output.
+
+## Datacake Integration
+
+For integration with [Datacake](https://datacake.co/), there is the script [datacake_decoder.js](scripts/datacake_decoder.js). With Datacake, you can get [data reports](https://docs.datacake.de/best-practices/best-practices-reports) as CSV files at regular intervals. The Python script [datacake_report_pv](extras/reports/datacake_report_pv.py) allows to concatenate, sort and filter those files to create a report with data plots as PDF file.
