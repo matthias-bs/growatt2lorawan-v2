@@ -263,4 +263,4 @@ Modify the example [data/secrets.json](data/secrets.json) as required and instal
 
 ## Datacake Integration
 
-For integration with [Datacake](https://datacake.co/), there is the script [datacake_decoder.js](scripts/datacake_decoder.js). With Datacake, you can get [data reports](https://docs.datacake.de/best-practices/best-practices-reports) as CSV files at regular intervals. The Python script [datacake_report_pv](extras/reports/datacake_report_pv.py) allows to concatenate, sort and filter those files to create a report with data plots as PDF file.
+For integration with [Datacake](https://datacake.co/), there is the script [datacake_decoder.js](scripts/datacake_decoder.js). With Datacake, you can get [data reports](https://docs.datacake.de/best-practices/best-practices-reports) as CSV files at regular intervals. The Python script [datacake_report_pv.py](extras/reports/datacake_report_pv.py) allows to concatenate, sort and filter those files and to create a report with data plots as PDF file.
