@@ -34,6 +34,8 @@
 // History:
 //
 // 20240721 Copied from BresserWeatherSensorLW project
+// 20240922 Bumped to RadioLib v7.0.X
+// 20240928 Modified for LoRaWAN v1.0.4 (requires no nwkKey)
 //
 // ToDo:
 // - 
@@ -50,6 +52,9 @@
 // How often to send an uplink - consider legal & FUP constraints - see notes
 const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
 
+#define LORAWAN_VERSION_1_1
+//#define LORAWAN_VERSION_1_0_4
+
 // JoinEUI - previous versions of LoRaWAN called this AppEUI
 // for development purposes you can use all zeros - see wiki for details
 #define RADIOLIB_LORAWAN_JOIN_EUI  0x0000000000000000
@@ -61,8 +66,10 @@ const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
 #ifndef RADIOLIB_LORAWAN_APP_KEY   // Replace with your App Key 
 #define RADIOLIB_LORAWAN_APP_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x-- 
 #endif
+#ifdef LORAWAN_VERSION_1_1
 #ifndef RADIOLIB_LORAWAN_NWK_KEY   // Put your Nwk Key here
 #define RADIOLIB_LORAWAN_NWK_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x-- 
+#endif
 #endif
 
 // For the curious, the #ifndef blocks allow for automated testing &/or you can
@@ -169,7 +176,11 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
 uint64_t joinEUI =   RADIOLIB_LORAWAN_JOIN_EUI;
 uint64_t devEUI  =   RADIOLIB_LORAWAN_DEV_EUI;
 uint8_t appKey[] = { RADIOLIB_LORAWAN_APP_KEY };
+#ifdef LORAWAN_VERSION_1_1
 uint8_t nwkKey[] = { RADIOLIB_LORAWAN_NWK_KEY };
+#else
+uint8_t nwkKey[] = { 0 };
+#endif
 
 // Create the LoRaWAN node
 LoRaWANNode node(&radio, &Region, subBand);
@@ -226,16 +237,16 @@ String stateDecode(const int16_t result) {
     return "RADIOLIB_ERR_DWELL_TIME_EXCEEDED";
   case RADIOLIB_ERR_CHECKSUM_MISMATCH:
     return "RADIOLIB_ERR_CHECKSUM_MISMATCH";
-  case RADIOLIB_LORAWAN_NO_DOWNLINK:
-    return "RADIOLIB_LORAWAN_NO_DOWNLINK";
+  case RADIOLIB_ERR_NO_JOIN_ACCEPT:
+    return "RADIOLIB_ERR_NO_JOIN_ACCEPT";
   case RADIOLIB_LORAWAN_SESSION_RESTORED:
     return "RADIOLIB_LORAWAN_SESSION_RESTORED";
   case RADIOLIB_LORAWAN_NEW_SESSION:
     return "RADIOLIB_LORAWAN_NEW_SESSION";
-  case RADIOLIB_LORAWAN_NONCES_DISCARDED:
-    return "RADIOLIB_LORAWAN_NONCES_DISCARDED";
-  case RADIOLIB_LORAWAN_SESSION_DISCARDED:
-    return "RADIOLIB_LORAWAN_SESSION_DISCARDED";
+  case RADIOLIB_ERR_NONCES_DISCARDED:
+    return "RADIOLIB_ERR_NONCES_DISCARDED";
+  case RADIOLIB_ERR_SESSION_DISCARDED:
+    return "RADIOLIB_ERR_SESSION_DISCARDED";
   }
   return "See TypeDef.h";
 }

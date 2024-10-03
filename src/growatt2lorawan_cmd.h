@@ -36,6 +36,7 @@
 //
 // 20240721 Copied from BresserWeatherSensorLW project
 // 20240815 Added getUplinkDelayMs()
+// 20241002 Changed sendCfgUplink() to encodeCfgUplink()
 //
 // ToDo:
 // -
@@ -189,11 +190,14 @@
 uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size);
 
 /*!
- * \brief Send configuration uplink
+ * \brief Encode configuration uplink
  *
- * \param uplinkRequest command ID of uplink request
+ * \param port uplink request port
+ * \param uplinkPayload uplink payload
+ * \param payloadSize   uplink payload size in bytes
+ * \param uplinkInterval uplink interval in seconds
  */
-void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval);
+void encodeCfgUplink(uint8_t port, uint8_t *uplinkPayload, uint8_t &payloadSize, uint32_t uplinkInterval);
 
 /*!
  * \brief Get uplink delay in milliseconds
