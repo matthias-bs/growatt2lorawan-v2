@@ -32,6 +32,7 @@
 // History:
 //
 // 20240814 Created
+// 20241002 Renamed port to fPort
 //
 // ToDo:
 // - 
@@ -56,7 +57,7 @@
 
 typedef struct
 {
-  int port;
+  int fPort;
   int mult;
 } Schedule;
 
