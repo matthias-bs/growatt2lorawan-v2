@@ -17,7 +17,7 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             6.6.0
+// RadioLib                             7.0.2
 // LoRa_Serialization                   3.2.1
 // ESP32Time                            2.0.6
 //
@@ -54,6 +54,9 @@
 // 20240814 Initial draft version
 // 20240820 Fixed sleep time calculation
 // 20240828 Renamed Preferences: BWS-LW to GRO2LW
+// 20241002 Fixed handling of downlink after any kind of uplink
+//          Bumped to RadioLib v7.0.0
+//          Modified for LoRaWAN v1.0.4 (requires no nwkKey)
 //
 //
 // Notes:
@@ -316,10 +319,16 @@ void printDateTime(void)
  */
 int16_t lwActivate(void)
 {
-  int16_t state = RADIOLIB_ERR_UNKNOWN;
-
   // setup the OTAA session information
-  node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
+#if defined(LORAWAN_VERSION_1_1)
+  int16_t state = node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
+#elif defined(LORAWAN_VERSION_1_0_4)
+  int16_t state = node.beginOTAA(joinEUI, devEUI, nullptr, appKey);
+#else
+#error "LoRaWAN version not defined"
+#endif
+
+  debug(state != RADIOLIB_ERR_NONE, "Initialise node failed", state, true);
 
   log_d("Recalling LoRaWAN nonces & session");
   // ##### setup the flash storage
@@ -473,7 +482,12 @@ void setup()
   printDateTime();
 
   // Try to load LoRaWAN secrets from LittleFS file, if available
-  loadSecrets(joinEUI, devEUI, nwkKey, appKey);
+#ifdef LORAWAN_VERSION_1_1
+  bool requireNwkKey = true;
+#else
+  bool requireNwkKey = false;
+#endif
+  loadSecrets(requireNwkKey, joinEUI, devEUI, nwkKey, appKey);
 
   // Initialize Application Layer
   appLayer.begin();
@@ -499,8 +513,9 @@ void setup()
 
   LoraEncoder encoder(uplinkPayload);
 
-  uint8_t port = 1;
-  appLayer.getPayloadStage1(port, encoder);
+  uint8_t fPort = UplinkSchedule[0].fPort;
+
+  appLayer.getPayloadStage1(fPort, encoder); // not used here
 
   int16_t state = 0; // return value for calls to RadioLib
 
@@ -546,96 +561,143 @@ void setup()
     node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
   }
 
-  // Retrieve the last uplink frame counter
-  uint32_t fCntUp = node.getFCntUp();
+  uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
+  size_t downlinkSize;                        // To hold the actual payload size rec'd
+  LoRaWANEvent_t downlinkDetails;
+  uint8_t payloadSize;
+  uint8_t maxPayloadLen = node.getMaxPayloadLen();
+  log_d("Max payload length: %u", maxPayloadLen);
 
-  // Send a confirmed uplink every 64th frame
-  // and also request the LinkCheck command
-  if (fCntUp % 64 == 0)
-  {
-    log_i("[LoRaWAN] Requesting LinkCheck");
-    node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
-  }
+  // ----- and now for the main event -----
 
-  // Set appStatusUplink flag if required
-  uint8_t appStatusUplinkInterval = appLayer.getAppStatusUplinkInterval();
-  if (appStatusUplinkInterval && (fCntUp % appStatusUplinkInterval == 0))
+  enum class E_FSM_STAGE : uint8_t
   {
-    appStatusUplinkPending = true;
-  }
+    E_SENSORDATA = 0x00,
+    E_RESPONSE = 0x01,
+    E_LWSTATUS = 0x02,
+    E_APPSTATUS = 0x03,
+    E_DONE = 0x04
+  };
 
-  // Set lwStatusUplink flag if required
-  if (prefs.lw_stat_interval && (fCntUp % prefs.lw_stat_interval == 0))
-  {
-    lwStatusUplinkPending = true;
-  }
+  E_FSM_STAGE fsmStage = E_FSM_STAGE::E_SENSORDATA;
 
   /// Uplink request - command received via downlink
   uint8_t uplinkReq = 0;
 
-  for (int i = 0; i < NUM_PORTS; i++)
+  /// Uplink schedule index
+  uint8_t schedIndex = 0;
+
+  do
   {
-    LoraEncoder encoder(uplinkPayload);
+    // Retrieve the last uplink frame counter
+    uint32_t fCntUp = node.getFCntUp();
+    log_d("FcntUp: %u", node.getFCntUp());
 
-    bool schedUplinkReq = UplinkSchedule[i].mult && (bootCount % UplinkSchedule[i].mult == 0);
-    if (!schedUplinkReq)
+    bool isConfirmed = false;
+
+    // Send a confirmed uplink every 64th frame
+    // and also request the LinkCheck command
+    if (fCntUp && (fCntUp % 64 == 0))
     {
-      continue;
-    }
-    if (i > 0)
-    {
-      delay(getUplinkDelayMs(SLEEP_INTERVAL_MIN));
-    }
-    port = UplinkSchedule[i].port;
-
-    // get payload immediately before uplink
-    appLayer.getPayloadStage2(port, encoder);
-
-    uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
-    size_t downlinkSize;                        // To hold the actual payload size rec'd
-    LoRaWANEvent_t uplinkDetails;
-    LoRaWANEvent_t downlinkDetails;
-
-    uint8_t payloadSize = encoder.getLength();
-
-    if (payloadSize > PAYLOAD_SIZE)
-    {
-      log_w("Payload size exceeds maximum of %u bytes - truncating", PAYLOAD_SIZE);
-      payloadSize = PAYLOAD_SIZE;
+      log_i("[LoRaWAN] Requesting LinkCheck");
+      node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
+      isConfirmed = true;
     }
 
-    // ----- and now for the main event -----
-    log_i("Sending uplink; port %u, size %u", port, payloadSize);
+    // Set appStatusUplink flag if required
+    uint8_t appStatusUplinkInterval = appLayer.getAppStatusUplinkInterval();
+    if (appStatusUplinkInterval && (fCntUp % appStatusUplinkInterval == 0))
+    {
+      appStatusUplinkPending = true;
+      log_i("App status uplink pending");
+    }
 
-    // perform an uplink & optionally receive downlink
-    if (fCntUp % 64 == 0)
+    // Set lwStatusUplink flag if required
+    if (prefs.lw_stat_interval && (fCntUp % prefs.lw_stat_interval == 0))
     {
-      state = node.sendReceive(
-          uplinkPayload,
-          payloadSize,
-          port,
-          downlinkPayload,
-          &downlinkSize,
-          true,
-          &uplinkDetails,
-          &downlinkDetails);
+      lwStatusUplinkPending = true;
+      log_i("LoRaWAN node status uplink pending");
     }
-    else
+
+    if (fsmStage == E_FSM_STAGE::E_SENSORDATA)
     {
-      state = node.sendReceive(
-          uplinkPayload,
-          payloadSize,
-          port,
-          downlinkPayload,
-          &downlinkSize,
-          false,
-          nullptr,
-          &downlinkDetails);
+      // Check for scheduled uplink
+      bool sendUplink = false;
+      while (schedIndex < NUM_PORTS)
+      {
+        if (UplinkSchedule[schedIndex].mult && (bootCount % UplinkSchedule[schedIndex].mult == 0))
+        {
+          sendUplink = true;
+          break;
+        }
+        else
+        {
+          schedIndex++;
+        }
+      }
+
+      if (sendUplink)
+      {
+        LoraEncoder encoder(uplinkPayload);
+
+        log_d("Sending sensor data uplink.");
+        fPort = UplinkSchedule[schedIndex].fPort;
+
+        // get payload immediately before uplink
+        appLayer.getPayloadStage2(fPort, encoder);
+        payloadSize = encoder.getLength();
+        if (payloadSize > maxPayloadLen)
+        {
+          log_w("Payload size exceeds maximum of %u bytes - truncating", maxPayloadLen);
+          payloadSize = maxPayloadLen;
+        }
+      }
+      else
+      {
+        // No uplink scheduled, go to next stage
+        fsmStage = E_FSM_STAGE::E_RESPONSE;
+      }
     }
-    debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
+
+    if (fsmStage == E_FSM_STAGE::E_RESPONSE)
+    {
+      log_d("Sending response uplink.");
+      fPort = uplinkReq;
+      encodeCfgUplink(fPort, uplinkPayload, payloadSize, uplinkIntervalSeconds);
+    }
+    else if (fsmStage == E_FSM_STAGE::E_LWSTATUS)
+    {
+      log_d("Sending LoRaWAN status uplink.");
+      fPort = CMD_GET_LW_STATUS;
+      encodeCfgUplink(fPort, uplinkPayload, payloadSize, uplinkIntervalSeconds);
+      lwStatusUplinkPending = false;
+    }
+    // else if (fsmStage == E_FSM_STAGE::E_APPSTATUS)
+    // {
+    //   log_d("Sending application status uplink.");
+    //   fPort = CMD_GET_SENSORS_STAT;
+    //   encodeCfgUplink(fPort, uplinkPayload, payloadSize, uplinkIntervalSeconds);
+    //   appStatusUplinkPending = false;
+    // }
+
+    log_i("Sending uplink; port %u, size %u", fPort, payloadSize);
+
+    state = node.sendReceive(
+        uplinkPayload,
+        payloadSize,
+        fPort,
+        downlinkPayload,
+        &downlinkSize,
+        isConfirmed,
+        nullptr,
+        &downlinkDetails);
+    debug(state < RADIOLIB_ERR_NONE, "Error in sendReceive", state, false);
+
+    uplinkReq = 0;
 
     // Check if downlink was received
-    if (state != RADIOLIB_LORAWAN_NO_DOWNLINK)
+    // (state 0 = no downlink, state 1/2 = downlink in window Rx1/Rx2)
+    if (state > 0)
     {
       // Did we get a downlink with data for us
       if (downlinkSize > 0)
@@ -671,6 +733,8 @@ void setup()
       log_d("[LoRaWAN] Output power:\t%d dBm", downlinkDetails.power);
       log_d("[LoRaWAN] Frame count:\t%u", downlinkDetails.fCnt);
       log_d("[LoRaWAN] fPort:\t\t%u", downlinkDetails.fPort);
+      log_d("[LoRaWAN] Time-on-air: \t%u ms", node.getLastToA());
+      log_d("[LoRaWAN] Rx window: %d", state);
     }
 
     uint32_t networkTime = 0;
@@ -698,34 +762,28 @@ void setup()
       log_d("[LoRaWAN] LinkCheck count:\t%u", gwCnt);
     }
 
-    if (appStatusUplinkPending)
+    if (++schedIndex < NUM_PORTS)
     {
-      log_i("App status uplink pending");
+      fsmStage = E_FSM_STAGE::E_SENSORDATA;
     }
-
-    if (lwStatusUplinkPending)
+    else if (uplinkReq)
     {
-      log_i("LoRaWAN node status uplink pending");
-    }
-
-    if (uplinkReq)
-    {
-      sendCfgUplink(uplinkReq, uplinkIntervalSeconds);
-      uplinkReq = 0;
+      fsmStage = E_FSM_STAGE::E_RESPONSE;
     }
     else if (lwStatusUplinkPending)
     {
-      sendCfgUplink(CMD_GET_LW_STATUS, uplinkIntervalSeconds);
-      lwStatusUplinkPending = false;
+      fsmStage = E_FSM_STAGE::E_LWSTATUS;
     }
     // else if (appStatusUplinkPending)
     // {
-    //   sendCfgUplink(CMD_GET_SENSORS_STAT, uplinkIntervalSeconds);
-    //   appStatusUplinkPending = false;
+    //   fsmStage = E_FSM_STAGE::E_APPSTATUS;
     // }
+    else
+    {
+      fsmStage = E_FSM_STAGE::E_DONE;
+    }
+  } while (fsmStage != E_FSM_STAGE::E_DONE);
 
-    log_d("FcntUp: %u", node.getFCntUp());
-  }
   // now save session to RTC memory
   uint8_t *persist = node.getBufferSession();
   memcpy(LWsession, persist, RADIOLIB_LORAWAN_SESSION_BUF_SIZE);
