@@ -54,6 +54,7 @@
 // 20240814 Initial draft version
 // 20240820 Fixed sleep time calculation
 // 20240828 Renamed Preferences: BWS-LW to GRO2LW
+// 20250307 Added custom sleep function for power saving between LoRaWAN transmissions
 //
 //
 // Notes:
@@ -510,6 +511,11 @@ void setup()
   state = radio.begin();
   debug(state != RADIOLIB_ERR_NONE, "Initalise radio failed", state, true);
 
+  #if defined(ESP32)
+  // Optionally provide a custom sleep function - see config.h
+  node.setSleepFunction(customDelay);
+  #endif
+  
   // activate node by restoring session or otherwise joining the network
   state = lwActivate();
   // state is one of RADIOLIB_LORAWAN_NEW_SESSION or RADIOLIB_LORAWAN_SESSION_RESTORED
