@@ -17,8 +17,8 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             6.6.0
-// LoRa_Serialization                   3.2.1
+// RadioLib                             7.1.2
+// LoRa_Serialization                   3.3.1
 // ESP32Time                            2.0.6
 //
 //
