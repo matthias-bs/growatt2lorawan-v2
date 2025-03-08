@@ -524,7 +524,7 @@ void setup()
 
 #if defined(ESP32)
   // Optionally provide a custom sleep function - see config.h
-  node.setSleepFunction(customDelay);
+  //node.setSleepFunction(customDelay);
 #endif
 
   // activate node by restoring session or otherwise joining the network
