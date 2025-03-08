@@ -40,6 +40,7 @@
 // 20240818 Replaced delay() with light sleep for ESP32
 // 20240828 Renamed Preferences: BWS-LW to GRO2LW
 //          Added implementation of CMD_SET_LW_STATUS_INTERVAL
+// 20250308 Updated to RadioLib v7.1.2
 //
 // ToDo:
 // -
@@ -325,5 +326,5 @@ void sendCfgUplink(uint8_t uplinkReq, uint32_t uplinkInterval)
 #endif
   log_d("Sending configuration uplink now.");
   int16_t state = node.sendReceive(uplinkPayload, encoder.getLength(), port);
-  debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
+  debug(state < RADIOLIB_ERR_NONE, "Error in sendReceive", state, false);
 }

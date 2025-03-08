@@ -17,8 +17,8 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             6.6.0
-// LoRa_Serialization                   3.2.1
+// RadioLib                             7.1.2
+// LoRa_Serialization                   3.3.1
 // ESP32Time                            2.0.6
 //
 //
@@ -54,6 +54,10 @@
 // 20240814 Initial draft version
 // 20240820 Fixed sleep time calculation
 // 20240828 Renamed Preferences: BWS-LW to GRO2LW
+// 20250307 Added custom sleep function for power saving between LoRaWAN transmissions
+// 20250308 Updated to RadioLib v7.1.2
+//          Added support for LoRaWAN v1.0.4
+//          Synced with BresserWeatherSensorLW
 //
 //
 // Notes:
@@ -65,7 +69,7 @@
 // - Pin mapping of radio transceiver module is done in config.h
 // - Pin mapping of RS485 interface is done in growatt_cfg.h
 // - For LoRaWAN Specification 1.1.0, a small set of data (the "nonces") have to be stored persistently -
-//   this implementation uses Flash (via Preferences library
+//   this implementation uses Flash (via Preferences library)
 // - Storing LoRaWAN network session information speeds up the connection (join) after a restart -
 //   this implementation uses the ESP32's RTC RAM or a variable located in the RP2040's RAM, respectively.
 //   In the latter case, an uninitialzed linker section is used for this purpose.
@@ -314,12 +318,18 @@ void printDateTime(void)
  *
  * \return RADIOLIB_LORAWAN_NEW_SESSION or RADIOLIB_LORAWAN_SESSION_RESTORED
  */
-int16_t lwActivate(void)
+int16_t lwActivate(LoRaWANNode &node)
 {
-  int16_t state = RADIOLIB_ERR_UNKNOWN;
-
   // setup the OTAA session information
-  node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
+#if defined(LORAWAN_VERSION_1_1)
+  int16_t state = node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
+#elif defined(LORAWAN_VERSION_1_0_4)
+  int16_t state = node.beginOTAA(joinEUI, devEUI, nullptr, appKey);
+#else
+#error "LoRaWAN version not defined"
+#endif
+
+  debug(state != RADIOLIB_ERR_NONE, "Initialise node failed", state, true);
 
   log_d("Recalling LoRaWAN nonces & session");
   // ##### setup the flash storage
@@ -375,7 +385,7 @@ int16_t lwActivate(void)
 
     if (state != RADIOLIB_LORAWAN_NEW_SESSION)
     {
-      log_d("Join failed: %d", state);
+      log_i("Join failed: %d", state);
 
       // how long to wait before join attempts. This is an interim solution pending
       // implementation of TS001 LoRaWAN Specification section #7 - this doc applies to v1.0.4 & v1.1
@@ -390,7 +400,7 @@ int16_t lwActivate(void)
     } // if activateOTAA state
   } // while join
 
-  log_d("Joined");
+  log_i("Joined");
 
   // reset the failed join count
   bootCountSinceUnsuccessfulJoin = 0;
@@ -473,10 +483,12 @@ void setup()
   printDateTime();
 
   // Try to load LoRaWAN secrets from LittleFS file, if available
-  loadSecrets(joinEUI, devEUI, nwkKey, appKey);
-
-  // Initialize Application Layer
-  appLayer.begin();
+#ifdef LORAWAN_VERSION_1_1
+  bool requireNwkKey = true;
+#else
+  bool requireNwkKey = false;
+#endif
+  loadSecrets(requireNwkKey, joinEUI, devEUI, nwkKey, appKey);
 
   preferences.begin("GRO2LW", false);
   prefs.sleep_interval = preferences.getUShort("sleep_int", SLEEP_INTERVAL);
@@ -499,8 +511,8 @@ void setup()
 
   LoraEncoder encoder(uplinkPayload);
 
-  uint8_t port = 1;
-  appLayer.getPayloadStage1(port, encoder);
+  uint8_t fPort = 1;
+  appLayer.getPayloadStage1(fPort, encoder);
 
   int16_t state = 0; // return value for calls to RadioLib
 
@@ -510,8 +522,13 @@ void setup()
   state = radio.begin();
   debug(state != RADIOLIB_ERR_NONE, "Initalise radio failed", state, true);
 
+#if defined(ESP32)
+  // Optionally provide a custom sleep function - see config.h
+  //node.setSleepFunction(customDelay);
+#endif
+
   // activate node by restoring session or otherwise joining the network
-  state = lwActivate();
+  state = lwActivate(node);
   // state is one of RADIOLIB_LORAWAN_NEW_SESSION or RADIOLIB_LORAWAN_SESSION_RESTORED
 
   // Set battery fill level -
@@ -548,13 +565,17 @@ void setup()
 
   // Retrieve the last uplink frame counter
   uint32_t fCntUp = node.getFCntUp();
+  log_d("FcntUp: %u", node.getFCntUp());
+
+  bool isConfirmed = false;
 
   // Send a confirmed uplink every 64th frame
   // and also request the LinkCheck command
-  if (fCntUp % 64 == 0)
+  if (fCntUp && (fCntUp % 64 == 0))
   {
     log_i("[LoRaWAN] Requesting LinkCheck");
     node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_LINK_CHECK);
+    isConfirmed = true;
   }
 
   // Set appStatusUplink flag if required
@@ -562,6 +583,7 @@ void setup()
   if (appStatusUplinkInterval && (fCntUp % appStatusUplinkInterval == 0))
   {
     appStatusUplinkPending = true;
+    log_i("App status uplink pending");
   }
 
   // Set lwStatusUplink flag if required
@@ -586,10 +608,10 @@ void setup()
     {
       delay(getUplinkDelayMs(SLEEP_INTERVAL_MIN));
     }
-    port = UplinkSchedule[i].port;
+    fPort = UplinkSchedule[i].port;
 
     // get payload immediately before uplink
-    appLayer.getPayloadStage2(port, encoder);
+    appLayer.getPayloadStage2(fPort, encoder);
 
     uint8_t downlinkPayload[MAX_DOWNLINK_SIZE]; // Make sure this fits your plans!
     size_t downlinkSize;                        // To hold the actual payload size rec'd
@@ -605,37 +627,25 @@ void setup()
     }
 
     // ----- and now for the main event -----
-    log_i("Sending uplink; port %u, size %u", port, payloadSize);
+    log_i("Sending uplink; port %u, size %u", fPort, payloadSize);
 
-    // perform an uplink & optionally receive downlink
-    if (fCntUp % 64 == 0)
-    {
-      state = node.sendReceive(
-          uplinkPayload,
-          payloadSize,
-          port,
-          downlinkPayload,
-          &downlinkSize,
-          true,
-          &uplinkDetails,
-          &downlinkDetails);
-    }
-    else
-    {
-      state = node.sendReceive(
-          uplinkPayload,
-          payloadSize,
-          port,
-          downlinkPayload,
-          &downlinkSize,
-          false,
-          nullptr,
-          &downlinkDetails);
-    }
-    debug((state != RADIOLIB_LORAWAN_NO_DOWNLINK) && (state != RADIOLIB_ERR_NONE), "Error in sendReceive", state, false);
+    state = node.sendReceive(
+        uplinkPayload,
+        payloadSize,
+        fPort,
+        downlinkPayload,
+        &downlinkSize,
+        isConfirmed,
+        nullptr,
+        &downlinkDetails);
+
+    debug(state < RADIOLIB_ERR_NONE, "Error in sendReceive", state, false);
+
+    uplinkReq = 0;
 
     // Check if downlink was received
-    if (state != RADIOLIB_LORAWAN_NO_DOWNLINK)
+    // (state 0 = no downlink, state 1/2 = downlink in window Rx1/Rx2)
+    if (state > 0)
     {
       // Did we get a downlink with data for us
       if (downlinkSize > 0)
@@ -671,6 +681,8 @@ void setup()
       log_d("[LoRaWAN] Output power:\t%d dBm", downlinkDetails.power);
       log_d("[LoRaWAN] Frame count:\t%u", downlinkDetails.fCnt);
       log_d("[LoRaWAN] fPort:\t\t%u", downlinkDetails.fPort);
+      log_d("[LoRaWAN] Time-on-air: \t%u ms", node.getLastToA());
+      log_d("[LoRaWAN] Rx window: %d", state);
     }
 
     uint32_t networkTime = 0;

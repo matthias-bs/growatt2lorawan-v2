@@ -34,6 +34,9 @@
 // History:
 //
 // 20240721 Copied from BresserWeatherSensorLW project
+// 20250307 Added customDelay()
+// 20250308 Updated to RadioLib v7.1.2
+//          Modified for optional use of LoRaWAN v1.0.4 (requires no nwkKey)
 //
 // ToDo:
 // - 
@@ -49,6 +52,8 @@
 
 // How often to send an uplink - consider legal & FUP constraints - see notes
 const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
+#define LORAWAN_VERSION_1_1
+//#define LORAWAN_VERSION_1_0_4
 
 // JoinEUI - previous versions of LoRaWAN called this AppEUI
 // for development purposes you can use all zeros - see wiki for details
@@ -61,8 +66,10 @@ const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
 #ifndef RADIOLIB_LORAWAN_APP_KEY   // Replace with your App Key 
 #define RADIOLIB_LORAWAN_APP_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x-- 
 #endif
+#ifdef LORAWAN_VERSION_1_1
 #ifndef RADIOLIB_LORAWAN_NWK_KEY   // Put your Nwk Key here
 #define RADIOLIB_LORAWAN_NWK_KEY   0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x--, 0x-- 
+#endif
 #endif
 
 // For the curious, the #ifndef blocks allow for automated testing &/or you can
@@ -169,10 +176,39 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
 uint64_t joinEUI =   RADIOLIB_LORAWAN_JOIN_EUI;
 uint64_t devEUI  =   RADIOLIB_LORAWAN_DEV_EUI;
 uint8_t appKey[] = { RADIOLIB_LORAWAN_APP_KEY };
+#ifdef LORAWAN_VERSION_1_1
 uint8_t nwkKey[] = { RADIOLIB_LORAWAN_NWK_KEY };
+#else
+uint8_t nwkKey[] = { 0 };
+#endif
 
 // Create the LoRaWAN node
 LoRaWANNode node(&radio, &Region, subBand);
+
+
+// Custom delay function:
+// Communication over LoRaWAN includes a lot of delays.
+// By default, RadioLib will use the Arduino delay() function,
+// which will waste a lot of power. However, you can put your
+// microcontroller to sleep instead by customizing the function below,
+// and providing it to RadioLib via "node.setSleepFunction".
+// Note:
+// Implementation from
+// https://github.com/jgromes/RadioLib/discussions/1401#discussioncomment-12080631
+#if defined(ESP32)
+void customDelay(RadioLibTime_t ms) {
+    uint64_t start = millis();
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_sleep_enable_timer_wakeup((ms-2)*(uint64_t)1000);
+    esp_light_sleep_start();
+    
+    if(millis() < start + ms) {
+	// if there's still some time left, do normal delay for remainder
+        vTaskDelay((start + ms - millis())/portTICK_PERIOD_MS);
+    }
+}
+#endif
+
 
 // result code to text ...
 String stateDecode(const int16_t result) {
@@ -226,19 +262,20 @@ String stateDecode(const int16_t result) {
     return "RADIOLIB_ERR_DWELL_TIME_EXCEEDED";
   case RADIOLIB_ERR_CHECKSUM_MISMATCH:
     return "RADIOLIB_ERR_CHECKSUM_MISMATCH";
-  case RADIOLIB_LORAWAN_NO_DOWNLINK:
-    return "RADIOLIB_LORAWAN_NO_DOWNLINK";
+  case RADIOLIB_ERR_NO_JOIN_ACCEPT:
+    return "RADIOLIB_ERR_NO_JOIN_ACCEPT";
   case RADIOLIB_LORAWAN_SESSION_RESTORED:
     return "RADIOLIB_LORAWAN_SESSION_RESTORED";
   case RADIOLIB_LORAWAN_NEW_SESSION:
     return "RADIOLIB_LORAWAN_NEW_SESSION";
-  case RADIOLIB_LORAWAN_NONCES_DISCARDED:
-    return "RADIOLIB_LORAWAN_NONCES_DISCARDED";
-  case RADIOLIB_LORAWAN_SESSION_DISCARDED:
-    return "RADIOLIB_LORAWAN_SESSION_DISCARDED";
+  case RADIOLIB_ERR_NONCES_DISCARDED:
+    return "RADIOLIB_ERR_NONCES_DISCARDED";
+  case RADIOLIB_ERR_SESSION_DISCARDED:
+    return "RADIOLIB_ERR_SESSION_DISCARDED";
   }
   return "See TypeDef.h";
 }
+
 
 // Helper function to display any issues
 void debug(bool isFail, const char* message, int state, bool Freeze) {
