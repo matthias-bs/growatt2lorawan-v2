@@ -267,7 +267,29 @@ For integration with [Datacake](https://datacake.co/), there is the script [data
 
 ## Home Assistant Integration
 
+This solution builds on top of the The Things Network MQTT Integration, but should work is a similar way for other LoRaWAN Network Services.
+
+#### Create a Bridge between TTN MQTT Broker and your Mosquitto MQTT Broker
+
+> [!NOTE]
+> This might not be necessary if it is possible to integrate the TTN MQTT Broker in Home Assistant.
+
+Customize and add the following configurations to your `/etc/mosquitto/conf.d/local.conf`:
+
+```
+connection bridge-01
+address eu1.cloud.thethings.network:8883
+remote_username YOUR_TTN_USERNAME
+remote_password YOUR_TTN_PASSWORD
+try_private false
+bridge_cafile /etc/ssl/certs/ISRG_Root_X1.pem
+topic # in 1
+```
+
+Change `address` as required. The bridge works in both directions, i.e. you can publish and subscribe messages to/from your LoRaWAN node using your local MQTT broker.
+
+#### Home Assistant Configuration
+
 See [home_assistant_configuration.yaml](scripts/home_assistant_configuration.yaml)
 
 ![home_assistant](https://github.com/user-attachments/assets/491dbb38-bb3e-4b93-a675-d21f1bf9f9cd)
-
