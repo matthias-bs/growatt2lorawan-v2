@@ -64,7 +64,7 @@
 // - Set "Core Debug Level: Debug" for initial testing
 // - The lines with "#pragma message()" in the compiler output are not errors, but useful hints!
 // - The default LoRaWAN credentials are read at compile time from secrets.h (included in config.h),
-//   they can be overriden by the JSON file secrets.json placed in LittleFS (ToDo).
+//   they can be overriden by the JSON file secrets.json placed in LittleFS.
 //   (Use https://github.com/earlephilhower/arduino-littlefs-upload for uploading.)
 // - Pin mapping of radio transceiver module is done in config.h
 // - Pin mapping of RS485 interface is done in growatt_cfg.h
