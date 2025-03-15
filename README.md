@@ -264,3 +264,10 @@ Modify the example [data/secrets.json](data/secrets.json) as required and instal
 ## Datacake Integration
 
 For integration with [Datacake](https://datacake.co/), there is the script [datacake_decoder.js](scripts/datacake_decoder.js). With Datacake, you can get [data reports](https://docs.datacake.de/best-practices/best-practices-reports) as CSV files at regular intervals. The Python script [datacake_report_pv.py](extras/reports/datacake_report_pv.py) allows to concatenate, sort and filter those files and to create a report with data plots as PDF file ([example](extras/reports/pv_inverter_2024.pdf)).
+
+## Home Assistant Integration
+
+See [home_assistant_configuration.yaml](scripts/home_assistant_configuration.yaml)
+
+![home_assistant](https://github.com/user-attachments/assets/491dbb38-bb3e-4b93-a675-d21f1bf9f9cd)
+
