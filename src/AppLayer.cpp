@@ -33,6 +33,7 @@
 // History:
 //
 // 20240513 Created
+// 20240316 Implemented genPayload()
 //
 //
 // ToDo:
@@ -55,8 +56,43 @@ AppLayer::decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
 
 void AppLayer::genPayload(uint8_t port, LoraEncoder &encoder)
 {
-    (void)port;    // suppress warning regarding unused parameter
-    (void)encoder; // suppress warning regarding unused parameter
+#if defined(EMULATE_SENSORS)
+    // modbus
+    encoder.writeUint8(0);
+    if (port == 1) {
+        // status
+        encoder.writeUint8(0);
+        // faultcode
+        encoder.writeUint8(0);
+        // energytoday
+        encoder.writeRawFloat(4.4);
+        // energytotal
+        encoder.writeRawFloat(5555.5);
+        // totalworktime
+        encoder.writeRawFloat(12345678);
+        // outputpower
+        encoder.writeRawFloat(600.0);
+        // gridvoltage
+        encoder.writeRawFloat(230.0);
+        // gridfrequency
+        encoder.writeRawFloat(50.0);
+    } else {
+        // pv1voltage
+        encoder.writeRawFloat(80);
+        // pv1current
+        encoder.writeRawFloat(8.8);
+        // pv1power
+        encoder.writeRawFloat(8.8 * 80);
+        // tempinverter
+        encoder.writeTemperature(25.5);
+        // tempipm
+        encoder.writeTemperature(25.5);
+        // pv1energytoday
+        encoder.writeRawFloat(4.6);
+        // pv1energytotal
+        encoder.writeRawFloat(5666.6);
+    }
+#endif
 }
 
 void AppLayer::getPayloadStage1(uint8_t port, LoraEncoder &encoder)
