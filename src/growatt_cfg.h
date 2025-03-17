@@ -42,7 +42,6 @@
 //#define useModulPower   1
 
 //#define ENABLE_JSON
-#define GEN_PAYLOAD               // Generate payload for debugging (do not read Modbus)
 //#define SLAVE_ID        1         // Default slave ID of Growatt
 //#define SERIAL_RATE     115200    // Serial speed for status info
 //#define MODBUS_RATE     9600      // Modbus speed of Growatt, do not change
