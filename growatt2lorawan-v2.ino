@@ -59,6 +59,7 @@
 //          Added support for LoRaWAN v1.0.4
 //          Synced with BresserWeatherSensorLW
 // 20250316 Re-implemented uplink scheduling
+// 20250318 Added battery voltage measurement
 //
 //
 // Notes:
@@ -89,6 +90,7 @@
 #include "config.h"
 #include "growatt2lorawan_cfg.h"
 #include "src/growatt_cfg.h"
+#include "src/adc/adc.h"
 #include "src/growatt2lorawan_cmd.h"
 #include "src/AppLayer.h"
 #include "src/LoadSecrets.h"
@@ -185,11 +187,6 @@ void print_wakeup_reason()
 }
 #endif
 
-uint16_t getBatteryVoltage()
-{
-  // Dummy function, replace with actual code
-  return 0;
-}
 
 void uplinkDelay(uint32_t timeUntilUplink, uint32_t uplinkInterval)
 {

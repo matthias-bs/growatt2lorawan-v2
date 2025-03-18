@@ -16,7 +16,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 - [X] Network time sync
 - [X] Downlink decoding
 - [X] Commanded uplink (configuration)
-- [ ] Battery voltage reading
+- [X] Battery voltage measurement (optional)
 
 ## Contents
 * [Hardware Requirements](#hardware-requirements)
