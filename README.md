@@ -40,6 +40,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [Using the Javascript Uplink/Downlink Formatters](#using-the-javascript-uplink--downlink-formatters)
 * [Loading LoRaWAN Network Service Credentials from File](#loading-lorawan-network-service-credentials-from-file)
 * [Datacake Integration](#datacake-integration)
+* [Home Assistant Integration](#home-assistant-integration)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
