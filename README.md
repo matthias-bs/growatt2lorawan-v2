@@ -41,6 +41,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
 * [Loading LoRaWAN Network Service Credentials from File](#loading-lorawan-network-service-credentials-from-file)
 * [Datacake Integration](#datacake-integration)
 * [Home Assistant Integration](#home-assistant-integration)
+* [Legal](#legal)
 
 ## Hardware Requirements
 * ESP32 (optionally with LiPo battery charger and battery)
