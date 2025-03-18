@@ -29,9 +29,7 @@
 // SOFTWARE.
 //
 // History:
-// 20240405 Created
-// 20240410 Added RP2040 specific implementation
-// 20240413 Refactored ADC handling
+// 20250318 Copied from BresserWeatherSensorLW
 //
 // ToDo:
 // -
@@ -42,7 +40,7 @@
 #define _ADC_H
 
 #include <Arduino.h>
-#include "../../BresserWeatherSensorLWCfg.h"
+#include "../../growatt2lorawan_cfg.h"
 
 
 /*!
