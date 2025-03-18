@@ -99,14 +99,14 @@ const uint8_t MAX_DOWNLINK_SIZE = 51;
 // (e.g. from PV inverter via USB) is not available.
 //
 // The battery voltage is used for
-// - Battery protection (immediately go to sleep if battery if U < BATTERY_LOW)
+// - Battery protection (immediately go to sleep if u_batt < BATTERY_LOW)
 // - Selection between normal/long sleep interval
 //
 // Prerequisites:
 // - The board has a voltage measurement circuit
 //   (e.g. a voltage divider between battery and ADC input)
 // - The battery voltage measurement circuit is enabled
-//   (by connecting the voltage divider to the battery and the ACD input 
+//   (e.g. by connecting the voltage divider to the battery and to the ACD input 
 //   in case of the FireBeetle ESP32)
 
 //#define EN_UBATT_MEASUREMENT
