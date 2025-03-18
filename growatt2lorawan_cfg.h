@@ -93,6 +93,61 @@ const uint8_t MAX_DOWNLINK_SIZE = 51;
 #define BATTERY_CHARGE_LIM 4200
 
 
+// Battery Voltage Measurement
+//
+// This is only needed if the board is powered from a battery when the main power supply
+// (e.g. from PV inverter via USB) is not available.
+//
+// The battery voltage is used for
+// - Battery protection (immediately go to sleep if battery if U < BATTERY_LOW)
+// - Selection between normal/long sleep interval
+//
+// Prerequisites:
+// - The board has a voltage measurement circuit
+//   (e.g. a voltage divider between battery and ADC input)
+// - The battery voltage measurement circuit is enabled
+//   (by connecting the voltage divider to the battery and the ACD input 
+//   in case of the FireBeetle ESP32)
+
+//#define EN_UBATT_MEASUREMENT
+
+// ADC for supply/battery voltage measurement
+// Defaults:
+// ---------
+// FireBeetle ESP32:            on-board connection to VB (with R10+R11 assembled)
+// TTGO LoRa32:                 on-board connection to VBAT
+// Adafruit Feather ESP32:      on-board connection to VBAT
+// Heltec WiFi LoRa 32 V3:      on-board connection to VBAT, controlled by GPIO37
+#if defined(ARDUINO_TTGO_LoRa32_V1) || defined(ARDUINO_TTGO_LoRa32_V2) || defined(ARDUINO_TTGO_LoRa32_v21new)
+#define PIN_ADC_IN 35
+#elif defined(ARDUINO_FEATHER_ESP32)
+#define PIN_ADC_IN A13
+#elif defined(ARDUINO_DFROBOT_FIREBEETLE_ESP32)
+#pragma message("On-board voltage divider must be enabled for battery voltage measurement (see schematic).")
+// On-board VB
+#define PIN_ADC_IN A0
+#elif defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
+// On-board VB
+#define PIN_ADC_IN A0
+#else
+#pragma message("Unknown battery voltage measurement circuit.")
+#pragma message("No power-saving & deep-discharge protection implemented yet.")
+// unused
+#define PIN_ADC_IN -1
+#endif
+
+// Voltage divider R1 / (R1 + R2) -> V_meas = V(R1 + R2); V_adc = V(R1)
+#if defined(ARDUINO_THINGPULSE_EPULSE_FEATHER)
+const float UBATT_DIV = 0.6812;
+#elif defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
+#define ADC_CTRL 37
+// R17=100k, R14=390k => 100k / (100k + 390 k)
+const float UBATT_DIV = 0.2041;
+#else
+const float UBATT_DIV = 0.5;
+#endif
+const uint8_t UBATT_SAMPLES = 10;
+
 // Debug printing
 // To enable debug mode (debug messages via serial port):
 // Arduino IDE: Tools->Core Debug Level: "Debug|Verbose"
