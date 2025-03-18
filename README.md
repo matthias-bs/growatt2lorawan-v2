@@ -273,7 +273,7 @@ This solution builds on top of the The Things Network MQTT Integration, but shou
 #### Create a Bridge between TTN MQTT Broker and your Mosquitto MQTT Broker
 
 > [!NOTE]
-> This might not be necessary if it is possible to integrate the TTN MQTT Broker in Home Assistant.
+> This might not be necessary if it is possible to integrate the TTN MQTT broker in Home Assistant.
 
 Customize and add the following configurations to your `/etc/mosquitto/conf.d/local.conf`:
 
@@ -294,3 +294,8 @@ Change `address` as required. The bridge works in both directions, i.e. you can 
 See [home_assistant_configuration.yaml](scripts/home_assistant_configuration.yaml)
 
 ![home_assistant](https://github.com/user-attachments/assets/491dbb38-bb3e-4b93-a675-d21f1bf9f9cd)
+
+## Legal
+
+> This project is in no way affiliated with, authorized, maintained, sponsored or endorsed by Growatt or any of its affiliates or subsidiaries.
+
