@@ -42,6 +42,7 @@
 // 20240607 Changed ARDUINO_HELTEC_WIFI_LORA_32_V3 to uppercase
 // 20241203 Fixed getVoltage(): use parameter 'pin' instead of PIN_ADC_IN
 // 20250317 Removed ARDUINO_heltec_wifi_lora_32_V3 and ARDUINO_M5STACK_Core2 (now all uppercase)
+// 20250318 Added enabling of battery voltage measurement (EN_UBATT_MEASUREMENT)
 //
 // ToDo:
 // -
@@ -80,6 +81,7 @@ getVoltage(uint8_t pin, uint8_t samples, float div)
   return voltage;
 }
 
+#if defined(EN_UBATT_MEASUREMENT)
 uint16_t getBatteryVoltage(void)
 {
 #if defined(ARDUINO_TTGO_LoRa32_V1) || defined(ARDUINO_TTGO_LoRa32_V2) || defined(ARDUINO_TTGO_LoRa32_v21new) || \
@@ -133,6 +135,13 @@ uint16_t getBatteryVoltage(void)
 
 #endif
 }
+#else
+uint16_t getBatteryVoltage(void)
+{
+  // Battery voltage measurement disabled
+  return 0;
+}
+#endif
 
 uint16_t getSupplyVoltage(void)
 {
