@@ -37,6 +37,7 @@
 // 20250307 Added customDelay()
 // 20250308 Updated to RadioLib v7.1.2
 //          Modified for optional use of LoRaWAN v1.0.4 (requires no nwkKey)
+// 20250318 Added pinmap for ARDUINO_TTGO_LORA32_V2
 //
 // ToDo:
 // - 
@@ -116,7 +117,16 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
   SX1276 radio = new Module(18, 26, 14, 33);
 
 #elif defined(ARDUINO_TTGO_LORA32_V2)
-   #pragma error ("ARDUINO_TTGO_LORA32_V2 awaiting pin map")
+  // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v2/pins_arduino.h
+  #pragma error ("Using TTGO LoRa32 V2")
+  #define PIN_LORA_NSS      LORA_CS
+  #define PIN_LORA_RST      LORA_RST
+  #define PIN_LORA_IRQ      LORA_IRQ
+  #define PIN_LORA_GPIO     RADIOLIB_NC
+  #define PIN_LORA_DIO2     RADIOLIB_NC
+  
+  #define LORA_CHIP SX1276
+  LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
 
 #elif defined(ARDUINO_TTGO_LoRa32_v21new) // T3_V1.6.1
   #pragma message ("Using TTGO LoRa32 v2.1 marked T3_V1.6.1 + Display")
@@ -143,7 +153,7 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
   SX1262 radio = new Module(8, 14, 12, 13);
 
 #elif defined(ARDUINO_CUBECELL_BOARD)
-  #pragma message ("Using TTGO LoRa32 v2.1 marked T3_V1.6.1 + Display")
+  #pragma message ("Using ARDUINO_CUBECELL_BOARD")
   SX1262 radio = new Module(RADIOLIB_BUILTIN_MODULE);
 
 #elif defined(ARDUINO_CUBECELL_BOARD_V2)
