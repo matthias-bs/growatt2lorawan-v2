@@ -38,6 +38,9 @@
 // 20250308 Updated to RadioLib v7.1.2
 //          Modified for optional use of LoRaWAN v1.0.4 (requires no nwkKey)
 // 20250318 Added pinmap for ARDUINO_TTGO_LORA32_V2
+// 20250530 Modified radio chip selection
+//          Added pinmap for Lilygo T3S3 SX1262/SX1276/LR1121
+//          Removed instances of radio and LoRaWANNode classes
 //
 // ToDo:
 // - 
@@ -58,7 +61,9 @@ const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
 
 // JoinEUI - previous versions of LoRaWAN called this AppEUI
 // for development purposes you can use all zeros - see wiki for details
-#define RADIOLIB_LORAWAN_JOIN_EUI  0x0000000000000000
+#ifndef RADIOLIB_LORAWAN_JOIN_EUI   // Replace with your Join EUI
+#define RADIOLIB_LORAWAN_JOIN_EUI  0x---------------
+#endif
 
 // The Device EUI & two keys can be generated on the TTN console 
 #ifndef RADIOLIB_LORAWAN_DEV_EUI   // Replace with your Device EUI
@@ -109,52 +114,100 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
   #pragma message("Required wiring: D2 to RESET, D3 to DIO0, D4 to CS, D5 to DIO1")
 
   #define LORA_CHIP SX1276
-  LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
 
 // LilyGo 
 #elif defined(ARDUINO_TTGO_LORA32_V1)
   #pragma message ("TTGO LoRa32 v1 - no Display")
-  SX1276 radio = new Module(18, 26, 14, 33);
+  // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v1/pins_arduino.h
+  // http://www.lilygo.cn/prod_view.aspx?TypeId=50003&Id=1130&FId=t3:50003:3
+  // https://github.com/Xinyuan-LilyGo/TTGO-LoRa-Series
+  // https://github.com/LilyGO/TTGO-LORA32/blob/master/schematic1in6.pdf
+  #define PIN_LORA_NSS      LORA_CS
+  #define PIN_LORA_RST      LORA_RST
+  #define PIN_LORA_IRQ      LORA_IRQ
+  #define PIN_LORA_GPIO     33
+  #define PIN_LORA_DIO2     RADIOLIB_NC
+  #define LORA_CHIP SX1276
 
 #elif defined(ARDUINO_TTGO_LORA32_V2)
   // https://github.com/espressif/arduino-esp32/blob/master/variants/ttgo-lora32-v2/pins_arduino.h
-  #pragma error ("Using TTGO LoRa32 V2")
+  #pragma message ("Using TTGO LoRa32 V2")
   #define PIN_LORA_NSS      LORA_CS
   #define PIN_LORA_RST      LORA_RST
   #define PIN_LORA_IRQ      LORA_IRQ
   #define PIN_LORA_GPIO     RADIOLIB_NC
   #define PIN_LORA_DIO2     RADIOLIB_NC
-  
   #define LORA_CHIP SX1276
-  LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
+
 
 #elif defined(ARDUINO_TTGO_LoRa32_v21new) // T3_V1.6.1
   #pragma message ("Using TTGO LoRa32 v2.1 marked T3_V1.6.1 + Display")
-  SX1276 radio = new Module(18, 26, 14, 33);
+  #define PIN_LORA_NSS      LORA_CS
+  #define PIN_LORA_RST      LORA_RST
+  #define PIN_LORA_IRQ      LORA_IRQ
+  #define PIN_LORA_GPIO     LORA_D1
+  #define PIN_LORA_DIO2     RADIOLIB_NC
+  #define LORA_CHIP SX1276
+
+  #elif defined(ARDUINO_LILYGO_T3S3_SX1262)
+  // https://github.com/espressif/arduino-esp32/blob/master/variants/lilygo_t3_s3_sx1262/pins_arduino.h
+  #pragma message("ARDUINO_LILYGO_T3S3_SX1262 defined; using on-board transceiver")
+  #define PIN_LORA_NSS   LORA_CS
+  #define PIN_LORA_IRQ  LORA_IRQ
+  #define PIN_LORA_GPIO LORA_BUSY
+  #define PIN_LORA_RST  LORA_RST
+  #define LORA_CHIP SX1262
+
+#elif defined(ARDUINO_LILYGO_T3S3_SX1276)
+  // https://github.com/espressif/arduino-esp32/blob/master/variants/lilygo_t3_s3_sx127x/pins_arduino.h
+  #pragma message("ARDUINO_LILYGO_T3S3_SX1276 defined; using on-board transceiver")
+  #define PIN_LORA_NSS   LORA_CS
+  #define PIN_LORA_IRQ  LORA_IRQ
+  #define PIN_LORA_GPIO LORA_BUSY
+  #define PIN_LORA_RST  LORA_RST
+  #define LORA_CHIP SX1276
+
+#elif defined(ARDUINO_LILYGO_T3S3_LR1121)
+  // https://github.com/espressif/arduino-esp32/blob/master/variants/lilygo_t3_s3_lr1121/pins_arduino.h
+  #pragma message("ARDUINO_LILYGO_T3S3_LR1121 defined; using on-board transceiver")
+  #define PIN_LORA_NSS   LORA_CS
+  #define PIN_LORA_IRQ  LORA_IRQ
+  #define PIN_LORA_GPIO LORA_BUSY
+  #define PIN_LORA_RST  LORA_RST
+  #define LORA_CHIP LR1121
 
 #elif defined(ARDUINO_TBEAM_USE_RADIO_SX1262)
-  #pragma error ("ARDUINO_TBEAM_USE_RADIO_SX1262 awaiting pin map")
+  #pragma message ("Using LilyGo T-Beam with SX1262")
+  #define PIN_LORA_NSS      LORA_CS
+  #define PIN_LORA_RST      LORA_RST
+  #define PIN_LORA_IRQ      LORA_IRQ
+  #define PIN_LORA_GPIO     LORA_IO1
+  #define PIN_LORA_DIO2     LORA_IO2
+  #define LORA_CHIP SX1262
 
 #elif defined(ARDUINO_TBEAM_USE_RADIO_SX1276)
-  #pragma message ("Using TTGO LoRa32 v2.1 marked T3_V1.6.1 + Display")
-  SX1276 radio = new Module(18, 26, 23, 33);
-
+  #pragma message ("Using LilyGo T-Beam with SX1276")
+  #define PIN_LORA_NSS      LORA_CS
+  #define PIN_LORA_RST      LORA_RST
+  #define PIN_LORA_IRQ      LORA_IRQ
+  #define PIN_LORA_GPIO     LORA_IO1
+  #define PIN_LORA_DIO2     LORA_IO2
+  #define LORA_CHIP SX1276
 
 // Heltec
 #elif defined(ARDUINO_HELTEC_WIFI_LORA_32)
   #pragma error ("ARDUINO_HELTEC_WIFI_LORA_32 awaiting pin map")
 
 #elif defined(ARDUINO_heltec_wifi_kit_32_V2)
-  #pragma message ("ARDUINO_heltec_wifi_kit_32_V2 awaiting pin map")
-  SX1276 radio = new Module(18, 26, 14, 35);
+  #pragma message ("ARDUINO_heltec_wifi_kit_32_V2 TODO pin map")
+  //SX1276 radio = new Module(18, 26, 14, 35);
 
 #elif defined(ARDUINO_heltec_wifi_kit_32_V3)
-  #pragma message ("Using Heltec WiFi LoRa32 v3 - Display + USB-C")
-  SX1262 radio = new Module(8, 14, 12, 13);
+  #pragma message ("Using Heltec WiFi LoRa32 v3 - Display + USB-C TODO pin map")
+  //SX1262 radio = new Module(8, 14, 12, 13);
 
 #elif defined(ARDUINO_CUBECELL_BOARD)
   #pragma message ("Using ARDUINO_CUBECELL_BOARD")
-  SX1262 radio = new Module(RADIOLIB_BUILTIN_MODULE);
 
 #elif defined(ARDUINO_CUBECELL_BOARD_V2)
   #pragma error ("ARDUINO_CUBECELL_BOARD_V2 awaiting pin map")
@@ -171,8 +224,6 @@ const uint8_t subBand = 0;  // For US915, change this to 2, otherwise leave on 0
   #define PIN_LORA_IRQ       4
   #define PIN_LORA_GPIO     16
   #define LORA_CHIP SX1276
-
-  LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
   
   // SX1262  pin order: Module(NSS/CS, DIO1, RESET, BUSY);
   // SX1262 radio = new Module(8, 14, 12, 13);
@@ -191,9 +242,6 @@ uint8_t nwkKey[] = { RADIOLIB_LORAWAN_NWK_KEY };
 #else
 uint8_t nwkKey[] = { 0 };
 #endif
-
-// Create the LoRaWAN node
-LoRaWANNode node(&radio, &Region, subBand);
 
 
 // Custom delay function:
