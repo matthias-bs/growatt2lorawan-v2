@@ -34,6 +34,7 @@
 // History:
 //
 // 20240813 Copied from growatt2lorawan (settings.h)
+// 20250530 Added pinning for Lilygo T3S3 SX1262/SX1276/LR1121
 //
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -92,6 +93,16 @@
     #define MAX485_TX       23        // D6, DI pin on the TTL to RS485 converter
     #define DEBUG_TX        12        // Serial port output to   USB converter (optional)
     #define DEBUG_RX        21        // Serial port input  from USB converter (n.c.)
+
+#elif defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
+    // https://github.com/espressif/arduino-esp32/blob/master/variants/feather_esp32/pins_arduino.h
+    #define INTERFACE_SEL   42        // Modbus interface select (0: USB / 1: RS485)
+    #define MAX485_DE       46        // D1, DE pin on the TTL to RS485 converter
+    #define MAX485_RE_NEG   45        // D2, RE pin on the TTL to RS485 converter
+    #define MAX485_RX       41        // D5, RO pin on the TTL to RS485 converter
+    #define MAX485_TX       40        // D6, DI pin on the TTL to RS485 converter
+    #define DEBUG_TX        34        // Serial port output to   USB converter (optional)
+    #define DEBUG_RX        33        // Serial port input  from USB converter (n.c.)
 
 #else
     // for generic CI target ESP32:ESP32:ESP32
