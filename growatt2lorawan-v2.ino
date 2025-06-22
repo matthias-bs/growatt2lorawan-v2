@@ -60,7 +60,9 @@
 //          Synced with BresserWeatherSensorLW
 // 20250316 Re-implemented uplink scheduling
 // 20250318 Added battery voltage measurement
-// 20250522 Updated to RadioLib v7.2.0
+// 20250530 Added creation of radio module & LoRaWANNode objects
+//          Added implementation for using Lilygo T3S3 SX1262/SX1276/LR1121
+// 20250622 Updated to RadioLib v7.2.0
 //
 //
 // Notes:
@@ -115,6 +117,33 @@ struct sPrefs
   uint16_t sleep_interval_long; //!< preferences: sleep interval long
   uint8_t lw_stat_interval;     //!< preferences: LoRaWAN node status uplink interval
 } prefs;
+
+
+// Create radio object
+LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO);
+
+#if defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
+SPIClass *spi = nullptr;
+#endif
+
+#if defined(ARDUINO_LILYGO_T3S3_LR1121)
+static const uint32_t rfswitch_dio_pins[] = {
+    RADIOLIB_LR11X0_DIO5, RADIOLIB_LR11X0_DIO6,
+    RADIOLIB_NC, RADIOLIB_NC, RADIOLIB_NC
+};
+
+static const Module::RfSwitchMode_t rfswitch_table[] = {
+    // mode                  DIO5  DIO6
+    { LR11x0::MODE_STBY,   { LOW,  LOW  } },
+    { LR11x0::MODE_RX,     { HIGH, LOW  } },
+    { LR11x0::MODE_TX,     { LOW,  HIGH } },
+    { LR11x0::MODE_TX_HP,  { LOW,  HIGH } },
+    { LR11x0::MODE_TX_HF,  { LOW,  LOW  } },
+    { LR11x0::MODE_GNSS,   { LOW,  LOW  } },
+    { LR11x0::MODE_WIFI,   { LOW,  LOW  } },
+    END_OF_MODE_TABLE,
+};
+#endif // ARDUINO_LILYGO_T3S3_LR1121
 
 // Time zone info
 const char *TZ_INFO = TZINFO_STR;
@@ -440,11 +469,6 @@ void setup()
   // set baud rate
   if (modbusRS485)
   {
-    Serial.begin(115200);
-    log_d("Modbus interface: RS485");
-  }
-  else
-  {
     Serial.setDebugOutput(false);
     DEBUG_PORT.begin(115200, SERIAL_8N1, DEBUG_RX, DEBUG_TX);
     DEBUG_PORT.setDebugOutput(true);
@@ -503,6 +527,19 @@ void setup()
 #endif
   loadSecrets(requireNwkKey, joinEUI, devEUI, nwkKey, appKey);
 
+  log_d("JoinEUI: %016llX", joinEUI);
+  log_d("DevEUI:  %016llX", devEUI);
+  log_d("AppKey: %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X",
+        appKey[0], appKey[1], appKey[2], appKey[3], appKey[4], appKey[5],
+        appKey[6], appKey[7], appKey[8], appKey[9], appKey[10], appKey[11],
+        appKey[12], appKey[13], appKey[14], appKey[15]);
+
+  log_d("NwkKey: %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X, %02X",
+        nwkKey[0], nwkKey[1], nwkKey[2], nwkKey[3],
+        nwkKey[4], nwkKey[5], nwkKey[6], nwkKey[7],
+        nwkKey[8], nwkKey[9], nwkKey[10], nwkKey[11],
+        nwkKey[12], nwkKey[13], nwkKey[14], nwkKey[15]);
+
   preferences.begin("GRO2LW", false);
   prefs.sleep_interval = preferences.getUShort("sleep_int", SLEEP_INTERVAL);
   log_d("Preferences: sleep_interval:        %u s", prefs.sleep_interval);
@@ -533,9 +570,20 @@ void setup()
 
   int16_t state = 0; // return value for calls to RadioLib
 
+  #if defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
+  // Use local radio object with custom SPI configuration
+  spi = new SPIClass(SPI);
+  spi->begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+  radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO, *spi);
+  #elif defined(ARDUINO_CUBECELL_BOARD)
+  SX1262 radio = new Module(RADIOLIB_BUILTIN_MODULE);
+  #endif
+
   // setup the radio based on the pinmap (connections) in config.h
-  log_v("Initalise the radio");
   radio.reset();
+  LoRaWANNode node(&radio, &Region, subBand);
+
+  log_v("Initalise the radio");
   state = radio.begin();
   debug(state != RADIOLIB_ERR_NONE, "Initalise radio failed", state, true);
 
