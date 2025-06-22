@@ -41,6 +41,7 @@
 // 20250530 Modified radio chip selection
 //          Added pinmap for Lilygo T3S3 SX1262/SX1276/LR1121
 //          Removed instances of radio and LoRaWANNode classes
+// 20250622 Updated to RadioLib v7.2.0
 //
 // ToDo:
 // - 
@@ -279,8 +280,8 @@ String stateDecode(const int16_t result) {
     return "ERR_PACKET_TOO_LONG";
   case RADIOLIB_ERR_RX_TIMEOUT:
     return "ERR_RX_TIMEOUT";
-  case RADIOLIB_ERR_CRC_MISMATCH:
-    return "ERR_CRC_MISMATCH";
+  case RADIOLIB_ERR_MIC_MISMATCH:
+    return "ERR_MIC_MISMATCH";
   case RADIOLIB_ERR_INVALID_BANDWIDTH:
     return "ERR_INVALID_BANDWIDTH";
   case RADIOLIB_ERR_INVALID_SPREADING_FACTOR:
@@ -312,10 +313,6 @@ String stateDecode(const int16_t result) {
     return "RADIOLIB_ERR_COMMAND_QUEUE_ITEM_NOT_FOUND";
   case RADIOLIB_ERR_JOIN_NONCE_INVALID:
     return "RADIOLIB_ERR_JOIN_NONCE_INVALID";
-  case RADIOLIB_ERR_N_FCNT_DOWN_INVALID:
-    return "RADIOLIB_ERR_N_FCNT_DOWN_INVALID";
-  case RADIOLIB_ERR_A_FCNT_DOWN_INVALID:
-    return "RADIOLIB_ERR_A_FCNT_DOWN_INVALID";
   case RADIOLIB_ERR_DWELL_TIME_EXCEEDED:
     return "RADIOLIB_ERR_DWELL_TIME_EXCEEDED";
   case RADIOLIB_ERR_CHECKSUM_MISMATCH:

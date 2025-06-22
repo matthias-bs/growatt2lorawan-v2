@@ -1,6 +1,6 @@
 {
   "name": "growatt2lorawan-v2",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "LoRaWAN Node for Growatt PV-Inverter Modbus Data Interface V2",
   "main": "growatt2lorawan-v2.ino",
   "frameworks": "arduino",
@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/matthias-bs/growatt2lorawan-v2#README",
   "dependencies": {
-    "RadioLib": "jgromes/RadioLib#semver:^7.2.1",
+    "RadioLib": "jgromes/RadioLib#semver:^7.2.0",
     "lora-serialization": "thesolarnomad/lora-serialization#semver:^3.2.1",
     "ESP32Time": "fbiego/ESP32Time#semver:^2.0.6",
     "ModbusMaster": "4-20ma/ModbusMaster#semver:^2.0.1"

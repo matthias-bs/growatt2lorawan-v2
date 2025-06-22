@@ -17,7 +17,7 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             7.1.2
+// RadioLib                             7.2.0
 // LoRa_Serialization                   3.3.1
 // ESP32Time                            2.0.6
 //
@@ -62,6 +62,7 @@
 // 20250318 Added battery voltage measurement
 // 20250530 Added creation of radio module & LoRaWANNode objects
 //          Added implementation for using Lilygo T3S3 SX1262/SX1276/LR1121
+// 20250622 Updated to RadioLib v7.2.0
 //
 //
 // Notes:
@@ -588,7 +589,7 @@ void setup()
 
 #if defined(ESP32)
   // Optionally provide a custom sleep function - see config.h
-  // node.setSleepFunction(customDelay);
+  node.setSleepFunction(customDelay);
 #endif
 
   // activate node by restoring session or otherwise joining the network
