@@ -60,6 +60,7 @@
 //          Synced with BresserWeatherSensorLW
 // 20250316 Re-implemented uplink scheduling
 // 20250318 Added battery voltage measurement
+// 20250522 Updated to RadioLib v7.2.0
 //
 //
 // Notes:
