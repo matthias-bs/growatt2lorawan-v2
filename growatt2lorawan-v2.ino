@@ -17,7 +17,7 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             7.1.2
+// RadioLib                             7.2.0
 // LoRa_Serialization                   3.3.1
 // ESP32Time                            2.0.6
 //
@@ -540,7 +540,7 @@ void setup()
 
 #if defined(ESP32)
   // Optionally provide a custom sleep function - see config.h
-  // node.setSleepFunction(customDelay);
+  node.setSleepFunction(customDelay);
 #endif
 
   // activate node by restoring session or otherwise joining the network
