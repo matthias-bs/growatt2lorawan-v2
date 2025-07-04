@@ -94,8 +94,7 @@ jobs:
         if: ${{ env.run-build == 'true' }}
         run:
           |
-          #for example in $(find $PWD/examples -name '*.ino' | sort); do
-          # modified to compile a singe sketch (instead of a library's examples)
+          # modified to compile a single sketch (instead of a library's examples)
           for example in $(find $PWD -name '*.ino' | sort); do
             # check whether to skip this sketch
             if [ ! -z '${{ steps.prep.outputs.skip-pattern }}' ] && [[ ${example} =~ ${{ steps.prep.outputs.skip-pattern }} ]]; then
@@ -104,7 +103,6 @@ jobs:
             else
               # build sketch
               echo -e "\n\033[1;33mBuilding ${example##*/} ... \033[0m";
-              #arduino-cli compile --libraries /home/runner/work/growatt2lorawan-v2 --fqbn ${{ matrix.board }}${{ steps.prep.outputs.options }} $example --warnings=${{ steps.prep.outputs.warnings }}
               arduino-cli compile --fqbn ${{ matrix.board }}${{ steps.prep.outputs.options }} $example --warnings=${{ steps.prep.outputs.warnings }}
 
               if [ $? -ne 0 ]; then
