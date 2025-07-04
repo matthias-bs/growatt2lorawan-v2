@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matthias-bs/growatt2lorawan-vs.git"
+    "url": "git+https://github.com/matthias-bs/growatt2lorawan-v2.git"
   },
   "author": "Matthias Prinke",
   "license": "MIT license",
