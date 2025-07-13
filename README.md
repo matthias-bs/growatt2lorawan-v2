@@ -6,6 +6,8 @@
 LoRaWAN Node for Growatt Photovoltaic Inverter Modbus Data Interface
 
 Use this project to monitor your PV Inverter in case it is out of reach of your WiFi access point (and a WiFi repeater would not help/is not wanted) and you are not able to cover the distance with an RS485 cable.
+If you don't have a LoRaWAN gateway within range, [growatt2radio](https://github.com/matthias-bs/growatt2radio) might be an option.
+
 Otherwise, the original Growatt ShineWiFi-S (serial) / ShineWiFi-X (USB), the customized [otti/Growatt_ShineWiFi-S](https://github.com/otti/Growatt_ShineWiFi-S) or [nygma2004/growatt2mqtt](https://github.com/nygma2004/growatt2mqtt) can be used.
 
 <img src="https://user-images.githubusercontent.com/83612361/234670204-18edc9af-aa36-49aa-8b0f-26082e73d37f.png" alt="growatt2lorawan Architecture" height="600" />
