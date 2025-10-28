@@ -17,7 +17,7 @@
 //
 // Library dependencies (tested versions):
 // ---------------------------------------
-// RadioLib                             7.2.0
+// RadioLib                             7.4.0
 // LoRa_Serialization                   3.3.1
 // ESP32Time                            2.0.6
 //
@@ -63,6 +63,7 @@
 // 20250530 Added creation of radio module & LoRaWANNode objects
 //          Added implementation for using Lilygo T3S3 SX1262/SX1276/LR1121
 // 20250622 Updated to RadioLib v7.2.0
+// 20251028 Updated to RadioLib v7.4.0
 //
 //
 // Notes:
@@ -788,11 +789,11 @@ void setup()
     }
 
     uint32_t networkTime = 0;
-    uint8_t fracSecond = 0;
-    if (node.getMacDeviceTimeAns(&networkTime, &fracSecond, true) == RADIOLIB_ERR_NONE)
+    uint16_t milliseconds = 0;
+    if (node.getMacDeviceTimeAns(&networkTime, &milliseconds, true) == RADIOLIB_ERR_NONE)
     {
       log_i("[LoRaWAN] DeviceTime Unix:\t %ld", networkTime);
-      log_i("[LoRaWAN] DeviceTime second:\t1/%u", fracSecond);
+      log_i("[LoRaWAN] DeviceTime frac:\t%u ms", milliseconds);
 
       // Update the system time with the time read from the network
       rtc.setTime(networkTime);

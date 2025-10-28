@@ -69,7 +69,7 @@ jobs:
         run:
           |
           declare -a required_libs=(
-            "RadioLib@7.2.1"
+            "RadioLib@7.4.0"
             "LoRa Serialization@3.2.1"
             "ArduinoJson@7.4.2"
             "ESP32Time@2.0.6"
