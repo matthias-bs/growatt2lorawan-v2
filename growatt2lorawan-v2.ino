@@ -65,6 +65,7 @@
 // 20250622 Updated to RadioLib v7.2.0
 // 20251028 Updated to RadioLib v7.4.0
 // 20260130 Fixed radio module initialization for LilyGo T3S3 boards using RadioLib 7.5.0
+// 20260215 Changed spi object to static allocation
 //
 //
 // Notes:
@@ -122,10 +123,10 @@ struct sPrefs
 
 
 #if defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
-static SPIClass *spi = new SPIClass(SPI);
+static SPIClass spi;
 
 // Create radio object with custom SPI configuration
-LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO, *spi);
+LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO, spi);
 
 #else
 // Create radio object
