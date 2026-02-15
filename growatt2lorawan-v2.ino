@@ -579,7 +579,7 @@ void setup()
 
   #if defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
     // Radio object with custom SPI configuration
-    spi->begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+    spi.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
   #endif
   
   // setup the radio based on the pinmap (connections) in config.h
