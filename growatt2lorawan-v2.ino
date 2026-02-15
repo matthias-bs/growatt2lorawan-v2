@@ -123,7 +123,7 @@ struct sPrefs
 
 
 #if defined(ARDUINO_LILYGO_T3S3_SX1262) || defined(ARDUINO_LILYGO_T3S3_SX1276) || defined(ARDUINO_LILYGO_T3S3_LR1121)
-static SPIClass spi;
+static SPIClass spi = SPI;
 
 // Create radio object with custom SPI configuration
 LORA_CHIP radio = new Module(PIN_LORA_NSS, PIN_LORA_IRQ, PIN_LORA_RST, PIN_LORA_GPIO, spi);
