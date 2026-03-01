@@ -91,6 +91,7 @@
 
 #include <Arduino.h>
 #include <time.h>
+#include <sys/time.h>
 #include <RadioLib.h>
 #include <Preferences.h>
 #include <LoraMessage.h>
@@ -354,10 +355,10 @@ void gotoSleep(uint32_t seconds)
 void setTime(time_t epoch)
 {
   timeval epoch_tv = {epoch, 0};
-  const timeval *tv = &epoch_tv;
-  timezone utc = {0, 0};
-  const timezone *tz = &utc;
-  settimeofday(tv, tz);
+  if (settimeofday(&epoch_tv, nullptr) != 0)
+  {
+    log_e("settimeofday() failed");
+  }
 }
 
 /// Print date and time (i.e. local time)
