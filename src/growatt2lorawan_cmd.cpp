@@ -98,7 +98,8 @@ uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
 
   if ((port == CMD_SET_DATETIME) && (size == 4))
   {
-    time_t set_time = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
+    uint32_t set_time_u32 = ((uint32_t)payload[0] << 24) | ((uint32_t)payload[1] << 16) | ((uint32_t)payload[2] << 8) | (uint32_t)payload[3];
+    time_t set_time = (time_t)set_time_u32;
     setTime(set_time);
     rtcLastClockSync = time(nullptr);
     rtcTimeSource = E_TIME_SOURCE::E_SET;
