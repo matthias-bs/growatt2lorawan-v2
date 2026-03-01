@@ -43,7 +43,7 @@
 #if !defined(_APPLAYER_H)
 #define _APPLAYER_H
 
-#include <ESP32Time.h>
+#include <time.h>
 #include <LoraMessage.h> // see https://github.com/thesolarnomad/lora-serialization
 //#include <Preferences.h> // keep this to store data persistently
 #include "growatt2lorawan_cmd.h"
