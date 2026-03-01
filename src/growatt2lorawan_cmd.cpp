@@ -53,7 +53,6 @@
 #include "growatt2lorawan_cmd.h"
 #include <Preferences.h>
 #include <RadioLib.h>
-#include <ESP32Time.h>
 #include "src/AppLayer.h"
 
 /*
@@ -74,9 +73,6 @@ extern struct sPrefs
 
 /// Preferences (stored in flash memory)
 extern Preferences preferences;
-
-/// Real time clock
-extern ESP32Time rtc;
 
 /// Application layer
 extern AppLayer appLayer;
