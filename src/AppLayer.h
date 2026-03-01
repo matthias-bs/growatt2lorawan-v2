@@ -33,6 +33,7 @@
 //
 // 20240513 Created
 // 20240607 Added getAppStatusUplinkInterval() for compatibility
+// 20260301 Removed RTC from constructor
 //
 // ToDo:
 // -
@@ -42,7 +43,6 @@
 #if !defined(_APPLAYER_H)
 #define _APPLAYER_H
 
-#include <ESP32Time.h>
 #include <LoraMessage.h> // see https://github.com/thesolarnomad/lora-serialization
 //#include <Preferences.h> // keep this to store data persistently
 #include "growatt2lorawan_cmd.h"
@@ -57,7 +57,6 @@
 class AppLayer
 {
 private:
-    ESP32Time *_rtc;
     time_t *_rtcLastClockSync;
 
     /// Preferences (stored in flash memory)
@@ -67,12 +66,10 @@ public:
     /*!
      * \brief Constructor
      *
-     * \param rtc Real time clock object
      * \param clocksync Timestamp of last clock synchronization
      */
-    AppLayer(ESP32Time *rtc, time_t *clocksync)
+    AppLayer(time_t *clocksync)
     {
-        _rtc = rtc;
         _rtcLastClockSync = clocksync;
     };
 

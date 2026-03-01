@@ -42,16 +42,17 @@
 //          Added implementation of CMD_SET_LW_STATUS_INTERVAL
 // 20250308 Updated to RadioLib v7.1.2
 // 20250315 Changed sendCfgUplink() to encodeCfgUplink()
+// 20260301 Refactoring: Replaced ESP32Time by POSIX functions
 //
 // ToDo:
 // -
 //
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <time.h>
 #include "growatt2lorawan_cmd.h"
 #include <Preferences.h>
 #include <RadioLib.h>
-#include <ESP32Time.h>
 #include "src/AppLayer.h"
 
 /*
@@ -73,9 +74,6 @@ extern struct sPrefs
 /// Preferences (stored in flash memory)
 extern Preferences preferences;
 
-/// Real time clock
-extern ESP32Time rtc;
-
 /// Application layer
 extern AppLayer appLayer;
 
@@ -85,6 +83,7 @@ extern E_TIME_SOURCE rtcTimeSource;
 
 /// growatt2lorawan-v2.ino
 extern uint16_t getBatteryVoltage();
+extern void setTime(time_t epoch);
 
 // Decode downlink
 uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
@@ -99,9 +98,10 @@ uint8_t decodeDownlink(uint8_t port, uint8_t *payload, size_t size)
 
   if ((port == CMD_SET_DATETIME) && (size == 4))
   {
-    time_t set_time = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
-    rtc.setTime(set_time);
-    rtcLastClockSync = rtc.getLocalEpoch();
+    uint32_t set_time_u32 = ((uint32_t)payload[0] << 24) | ((uint32_t)payload[1] << 16) | ((uint32_t)payload[2] << 8) | (uint32_t)payload[3];
+    time_t set_time = (time_t)set_time_u32;
+    setTime(set_time);
+    rtcLastClockSync = time(nullptr);
     rtcTimeSource = E_TIME_SOURCE::E_SET;
 
 #if CORE_DEBUG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
@@ -176,7 +176,7 @@ void encodeCfgUplink(uint8_t port, uint8_t *uplinkPayload, uint8_t &payloadSize)
   if (uplinkReq == CMD_GET_DATETIME)
   {
     log_i("Date/Time");
-    time_t t_now = rtc.getLocalEpoch();
+    time_t t_now = time(nullptr);
     encoder.writeUint8((t_now >> 24) & 0xff);
     encoder.writeUint8((t_now >> 16) & 0xff);
     encoder.writeUint8((t_now >> 8) & 0xff);

@@ -15,11 +15,11 @@
 // https://github.com/jgromes/RadioLib/tree/master/examples/LoRaWAN/LoRaWAN_End_Device_Reference
 //
 //
-// Library dependencies (tested versions):
-// ---------------------------------------
-// RadioLib                             7.5.0
-// LoRa_Serialization                   3.3.1
-// ESP32Time                            2.0.6
+// Library dependencies (see package.json for tested versions):
+// ------------------------------------------------------------
+// RadioLib
+// LoRa_Serialization
+// ModbusMaster
 //
 //
 // created: 07/2024
@@ -27,7 +27,7 @@
 //
 // MIT License
 //
-// Copyright (c) 2024 Matthias Prinke
+// Copyright (c) 2026 Matthias Prinke
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -66,6 +66,7 @@
 // 20251028 Updated to RadioLib v7.4.0
 // 20260130 Fixed radio module initialization for LilyGo T3S3 boards using RadioLib 7.5.0
 // 20260215 Changed spi object to static allocation
+// 20260301 Refactoring: Replaced ESP32Time by POSIX functions, removed RTC library dependency
 //
 //
 // Notes:
@@ -88,10 +89,11 @@
 ///////////////////////////////////////////////////////////////////////////////
 /*! \file growatt2lorawan-v2.ino */
 
-// include the library
+#include <Arduino.h>
+#include <time.h>
+#include <sys/time.h>
 #include <RadioLib.h>
 #include <Preferences.h>
-#include <ESP32Time.h>
 #include <LoraMessage.h>
 #include "config.h"
 #include "growatt2lorawan_cfg.h"
@@ -194,11 +196,9 @@ bool appStatusUplinkPending __attribute__((section(".uninitialized_data")));
 bool lwStatusUplinkPending __attribute__((section(".uninitialized_data")));
 #endif
 
-/// Real time clock
-ESP32Time rtc;
 
 /// Application layer
-AppLayer appLayer(&rtc, &rtcLastClockSync);
+AppLayer appLayer(&rtcLastClockSync);
 
 /// Uplink scheduler
 UplinkScheduler uplinkScheduler;
@@ -275,7 +275,7 @@ uint32_t sleepDuration(uint16_t battery_weak)
   if (rtcLastClockSync)
   {
     struct tm timeinfo;
-    time_t t_now = rtc.getLocalEpoch();
+    time_t t_now = time(nullptr);
     localtime_r(&t_now, &timeinfo);
 
     uint32_t diff = (timeinfo.tm_min * 60) % sleep_interval + timeinfo.tm_sec;
@@ -322,7 +322,7 @@ void gotoSleep(uint32_t seconds)
 void gotoSleep(uint32_t seconds)
 {
   log_i("Sleeping for %lu s", seconds);
-  time_t t_now = rtc.getLocalEpoch();
+  time_t t_now = time(nullptr);
   datetime_t dt;
   epoch_to_datetime(&t_now, &dt);
   rtc_set_datetime(&dt);
@@ -351,13 +351,23 @@ void gotoSleep(uint32_t seconds)
 }
 #endif
 
+/// Set RTC to epoch
+void setTime(time_t epoch)
+{
+  timeval epoch_tv = {epoch, 0};
+  const timeval *tv = &epoch_tv;
+  timezone utc = {0, 0};
+  const timezone *tz = &utc;
+  settimeofday(tv, tz);
+}
+
 /// Print date and time (i.e. local time)
 void printDateTime(void)
 {
   struct tm timeinfo;
   char tbuf[25];
 
-  time_t tnow = rtc.getLocalEpoch();
+  time_t tnow = time(nullptr);
   localtime_r(&tnow, &timeinfo);
   strftime(tbuf, 25, "%Y-%m-%d %H:%M:%S", &timeinfo);
   log_i("%s", tbuf);
@@ -500,7 +510,7 @@ void setup()
   rtc_set_datetime(&dt);
 
   // Set SW clock
-  rtc.setTime(time_saved);
+  setTime(time_saved);
 
   longSleep = ((watchdog_hw->scratch[1] & 2) == 2);
   rtcLastClockSync = watchdog_hw->scratch[2];
@@ -626,7 +636,7 @@ void setup()
   node.setDeviceStatus(battLevel);
 
   // Check if clock was never synchronized or sync interval has expired
-  if ((rtcLastClockSync == 0) || ((rtc.getLocalEpoch() - rtcLastClockSync) > (CLOCK_SYNC_INTERVAL * 60)))
+  if ((rtcLastClockSync == 0) || ((time(nullptr) - rtcLastClockSync) > (CLOCK_SYNC_INTERVAL * 60)))
   {
     log_i("RTC sync required");
     node.sendMacCommandReq(RADIOLIB_LORAWAN_MAC_DEVICE_TIME);
@@ -799,10 +809,10 @@ void setup()
       log_i("[LoRaWAN] DeviceTime frac:\t%u ms", milliseconds);
 
       // Update the system time with the time read from the network
-      rtc.setTime(networkTime);
+      setTime(networkTime);
 
       // Save clock sync timestamp and clear flag
-      rtcLastClockSync = rtc.getLocalEpoch();
+      rtcLastClockSync = time(nullptr);
       rtcTimeSource = E_TIME_SOURCE::E_LORA;
       log_d("RTC sync completed");
       printDateTime();
