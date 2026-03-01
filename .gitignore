@@ -1,2 +1,5 @@
 secrets.*
 credentials.*
+
+# Other
+_codeql_detected_source_root
