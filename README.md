@@ -31,6 +31,7 @@ This is a reimplementation of [growatt2lorawan](https://github.com/matthias-bs/g
   * [Debug Interface in case of using Modbus via USB Interface (optional)](#debug-interface-in-case-of-using-modbus-via-usb-interface-optional)
 * [LoRaWAN Network Service Configuration](#lorawan-network-service-configuration)
 * [Library Dependencies](#library-dependencies)
+  * [Upgrading from RadioLib 7](#upgrading-from-radiolib-7)
 * [Software Build Configuration](#software-build-configuration)
 * [LoRaWAN Payload Formatters](#lorawan-payload-formatters)
   * [The Things Network Payload Formatters Setup](#the-things-network-payload-formatters-setup)
@@ -124,10 +125,28 @@ Create an account and set up a device configuration in your LoRaWAN network prov
 
 ## Library Dependencies
 
-* [RadioLib](https://github.com/jgromes/RadioLib) by Jan Gromeš  
+* [RadioLib](https://github.com/jgromes/RadioLib) 8.0.0 by Jan Gromeš
 * [Lora-Serialization](https://github.com/thesolarnomad/lora-serialization) by Joscha Feth
 * [ESP32Time](https://github.com/fbiego/ESP32Time) by Felix Biego
 * [ModbusMaster](https://github.com/4-20ma/ModbusMaster) by Doc Walker
+
+### Upgrading from RadioLib 7
+
+Before uploading this firmware to an existing device, reprovision it with fresh
+credentials or reset its LoRaWAN network server's DevNonce history according to your
+provider's instructions. RadioLib 8 starts a new local nonce sequence and rejoins;
+without a network-side reset, join requests may be rejected. Resetting the server's
+history alone can reuse previous DevNonce values, so prefer reprovisioning with fresh
+credentials. There is no firmware prompt or migration gate.
+
+RadioLib 8 stores its persistent data in the `radiolib8` Preferences namespace and
+its session in retained memory. The old `radiolib` namespace and application
+preferences are left untouched, but the old session and nonce data are not migrated.
+A corrupted, unreadable, or credentials-mismatched v8 persistence record stops the
+node rather than silently resetting its nonce sequence; investigate storage and
+network state before recovery.
+Do not downgrade to RadioLib 7 without again coordinating nonce/session state with the
+network server: the old local state will be stale after v8 operation.
 
 ## Software Build Configuration
 
