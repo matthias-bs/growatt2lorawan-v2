@@ -685,13 +685,14 @@ void setup()
   radioConfig.frequency = Region.bandType == RADIOLIB_LORAWAN_BAND_DYNAMIC
                               ? Region.txFreqs[0].freq * 100UL
                               : Region.txSpans[0].freqStart * 100UL;
+#if defined(ARDUINO_LILYGO_T3S3_LR1121)
+  radio.tcxoVoltage = RadioLibTCXOVoltage_t::Voltage3V0;
+#endif
   state = radio.begin(radioConfig);
   debug(state != RADIOLIB_ERR_NONE, "Initalise radio failed", state, true);
 
 #if defined(ARDUINO_LILYGO_T3S3_LR1121)
   radio.setRfSwitchTable(rfswitch_dio_pins, rfswitch_table);
-  state = radio.setTCXO(RadioLibTCXOVoltage_t::Voltage3V0);
-  debug(state != RADIOLIB_ERR_NONE, "Configuring radio TCXO failed", state, true);
 #endif
 
 #if defined(ESP32)
