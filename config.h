@@ -42,6 +42,7 @@
 //          Added pinmap for Lilygo T3S3 SX1262/SX1276/LR1121
 //          Removed instances of radio and LoRaWANNode classes
 // 20250622 Updated to RadioLib v7.2.0
+// 20261123 Updated to RadioLib v8.0.0 (customDelay)
 //
 // ToDo:
 // - 
@@ -54,6 +55,13 @@
 #include <stdint.h>
 #include <RadioLib.h>
 #include "secrets.h"
+#if defined(ESP32)
+#include <driver/gpio.h>
+#include <esp_err.h>
+#include <esp_sleep.h>
+#include <esp_timer.h>
+#include <stdlib.h>
+#endif
 
 // How often to send an uplink - consider legal & FUP constraints - see notes
 const uint32_t uplinkIntervalSeconds = 5UL * 60UL;    // minutes x seconds
@@ -241,7 +249,7 @@ uint8_t appKey[] = { RADIOLIB_LORAWAN_APP_KEY };
 #ifdef LORAWAN_VERSION_1_1
 uint8_t nwkKey[] = { RADIOLIB_LORAWAN_NWK_KEY };
 #else
-uint8_t nwkKey[] = { 0 };
+uint8_t nwkKey[16] = { 0 };
 #endif
 
 
@@ -251,19 +259,71 @@ uint8_t nwkKey[] = { 0 };
 // which will waste a lot of power. However, you can put your
 // microcontroller to sleep instead by customizing the function below,
 // and providing it to RadioLib via "node.setSleepFunction".
-// Note:
-// Implementation from
-// https://github.com/jgromes/RadioLib/discussions/1401#discussioncomment-12080631
 #if defined(ESP32)
 void customDelay(RadioLibTime_t ms) {
-    uint64_t start = millis();
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-    esp_sleep_enable_timer_wakeup((ms-2)*(uint64_t)1000);
-    esp_light_sleep_start();
-    
-    if(millis() < start + ms) {
-	// if there's still some time left, do normal delay for remainder
-        vTaskDelay((start + ms - millis())/portTICK_PERIOD_MS);
+    if (ms == 0) {
+        return;
+    }
+
+    const int64_t start = esp_timer_get_time();
+    const uint64_t requestedUs = static_cast<uint64_t>(ms) * 1000ULL;
+    constexpr uint64_t guardUs = 2000ULL;
+    constexpr uint64_t minSleepUs = 10000ULL;
+    const gpio_num_t irqPin = static_cast<gpio_num_t>(PIN_LORA_IRQ);
+    bool sleepFailed = false;
+
+    if (requestedUs > minSleepUs + guardUs && gpio_get_level(irqPin) == 0) {
+        esp_err_t sleepError = gpio_intr_disable(irqPin);
+        if (sleepError == ESP_OK) {
+            sleepError = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        }
+        if (sleepError == ESP_OK) {
+            sleepError = gpio_wakeup_enable(irqPin, GPIO_INTR_HIGH_LEVEL);
+        }
+        if (sleepError == ESP_OK) {
+            sleepError = esp_sleep_enable_gpio_wakeup();
+        }
+        if (sleepError == ESP_OK) {
+            const uint64_t elapsedUs = static_cast<uint64_t>(esp_timer_get_time() - start);
+            if (elapsedUs < requestedUs && requestedUs - elapsedUs > minSleepUs + guardUs &&
+                gpio_get_level(irqPin) == 0) {
+                sleepError = esp_sleep_enable_timer_wakeup(requestedUs - elapsedUs - guardUs);
+                if (sleepError == ESP_OK) {
+                    sleepError = esp_light_sleep_start();
+                }
+            }
+        }
+
+        const esp_err_t wakeError = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        const esp_err_t gpioWakeError = gpio_wakeup_disable(irqPin);
+        const esp_err_t typeError = gpio_set_intr_type(irqPin, GPIO_INTR_POSEDGE);
+        const esp_err_t irqError = gpio_intr_enable(irqPin);
+        if (typeError != ESP_OK || irqError != ESP_OK) {
+            log_e("Failed to restore radio IRQ (type: %s, enable: %s)",
+                  esp_err_to_name(typeError), esp_err_to_name(irqError));
+            abort();
+        }
+        if (sleepError != ESP_OK && sleepError != ESP_ERR_SLEEP_REJECT) {
+            log_w("LoRaWAN light sleep failed: %s", esp_err_to_name(sleepError));
+        }
+        sleepFailed = sleepError != ESP_OK;
+        if (wakeError != ESP_OK || gpioWakeError != ESP_OK) {
+            log_e("Failed to clear LoRaWAN wake sources (source: %s, GPIO: %s)",
+                  esp_err_to_name(wakeError), esp_err_to_name(gpioWakeError));
+            abort();
+        }
+    }
+
+    while (gpio_get_level(irqPin) == 0) {
+        const uint64_t elapsedUs = static_cast<uint64_t>(esp_timer_get_time() - start);
+        if (elapsedUs >= requestedUs) {
+            break;
+        }
+        if (sleepFailed && requestedUs - elapsedUs > 10000ULL) {
+            delay(1);
+        } else if (requestedUs - elapsedUs > 1000ULL) {
+            delayMicroseconds(100);
+        }
     }
 }
 #endif

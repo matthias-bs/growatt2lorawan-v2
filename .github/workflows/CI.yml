@@ -18,6 +18,8 @@ jobs:
           - esp32:esp32:firebeetle32
           - esp32:esp32:ttgo-lora32:Revision=TTGO_LoRa32_v21new
           - esp32:esp32:lilygo_t3s3:Revision=Radio_SX1262
+          - esp32:esp32:lilygo_t3s3:Revision=Radio_SX1276
+          - esp32:esp32:lilygo_t3s3:Revision=Radio_LR1121
           - esp32:esp32:featheresp32
           #- esp32:esp32:ttgo-lora32:Revision=TTGO_LoRa32_V1
           #- esp32:esp32:ttgo-lora32:Revision=TTGO_LoRa32_V2
@@ -69,7 +71,7 @@ jobs:
         run:
           |
           declare -a required_libs=(
-            "RadioLib@7.7.1"
+            "RadioLib@8.0.0"
             "LoRa Serialization@3.3.1"
             "ArduinoJson@7.4.3"
             "ModbusMaster@2.0.1")
